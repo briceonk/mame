@@ -48,16 +48,16 @@ public:
     news_r4k_state(machine_config const &mconfig, device_type type, char const *tag)
         : driver_device(mconfig, type, tag),
           m_cpu(*this, "cpu"),
-          m_ram(*this, "ram")
+          m_ram(*this, "ram"),
           //m_dma(*this, "dma"),
           //m_rtc(*this, "rtc"),
-          //m_scc(*this, "scc"),
+          m_scc(*this, "scc"),
           //m_net(*this, "net"),
           //m_fdc(*this, "fdc"),
           //m_lcd(*this, "lcd"),
           //m_hid(*this, "hid"),
           //m_scsi(*this, "scsi:7:cxd1185"),
-          //m_serial(*this, "serial%u", 0U),
+          m_serial(*this, "serial%u", 0U)
           //m_scsibus(*this, "scsi"),
           //m_vram(*this, "vram"),
           //m_led(*this, "led%u", 0U) 
@@ -126,7 +126,7 @@ protected:
     required_device<ram_device> m_ram;
     //required_device<dmac_0448_device> m_dma;
     //required_device<m48t02_device> m_rtc;
-    //required_device<z80scc_device> m_scc;
+    required_device<z80scc_device> m_scc;
     //required_device<am7990_device> m_net;
     // required_device<upd72067_device> m_fdc;
 
@@ -134,7 +134,7 @@ protected:
     //required_device<news_hid_hle_device> m_hid;
     //required_device<cxd1185_device> m_scsi;
 
-    //required_device_array<rs232_port_device, 2> m_serial;
+    required_device_array<rs232_port_device, 2> m_serial;
     //required_device<nscsi_bus_device> m_scsibus;
 
     //required_shared_ptr<u32> m_vram;
@@ -221,93 +221,101 @@ void news_r4k_state::cpu_map(address_map &map)
     // Monitor ROM (NEWS firmware)
     map(0x1fc00000, 0x1fc3ffff).rom().region("mrom", 0);
 
-    map(0xbf3d0000, 0xbf3d0000); // DIP_SWITCH
-    map(0xbf3c0000, 0xbf3c0000); // IDROM
-    map(0xbf800000, 0xbf800000); // TIMER0
-    map(0xbf840000, 0xbf840000); // FREERUN
-    map(0xbf880000, 0xbf882000); // NVRAM  TODO: Confirm size with datasheet? this doesn't cover the mrom NVRAM region
-    map(0xbf881fe0, 0xbf881fe0); // RTC_PORT
+    map(0x1f3d0000, 0x1f3d0000); // DIP_SWITCH
+    map(0x1f3c0000, 0x1f3c03ff).rom().region("idrom", 0); // IDROM
+    map(0x1f800000, 0x1f800000); // TIMER0
+    map(0x1f840000, 0x1f840000); // FREERUN
+    map(0x1f880000, 0x1f882000); // NVRAM  TODO: Confirm size with datasheet? this doesn't cover the mrom NVRAM region
+    map(0x1f881fe0, 0x1f881fe0); // RTC_PORT
 
     // Interrupt clear ports
-    map(0xbf4e0000, 0xbf4e0000); // INTCLR0
-    map(0xbf4e0004, 0xbf4e0004); // INTCLR1
-    map(0xbf4e0008, 0xbf4e0008); // INTCLR2
-    map(0xbf4e000c, 0xbf4e000c); // INTCLR3
-    map(0xbf4e0010, 0xbf4e0010); // INTCLR4
-    map(0xbf4e0014, 0xbf4e0014); // INTCLR5
+    map(0x1f4e0000, 0x1f4e0000); // INTCLR0
+    map(0x1f4e0004, 0x1f4e0004); // INTCLR1
+    map(0x1f4e0008, 0x1f4e0008); // INTCLR2
+    map(0x1f4e000c, 0x1f4e000c); // INTCLR3
+    map(0x1f4e0010, 0x1f4e0010); // INTCLR4
+    map(0x1f4e0014, 0x1f4e0014); // INTCLR5
 
     // Interrupt enable ports
-    map(0xbfa00000, 0xbfa00000); // INTEN0
-    map(0xbfa00004, 0xbfa00004); // INTEN1
-    map(0xbfa00008, 0xbfa00008); // INTEN2
-    map(0xbfa0000c, 0xbfa0000c); // INTEN3
-    map(0xbfa00010, 0xbfa00010); // INTEN4
-    map(0xbfa00014, 0xbfa00014); // INTEN5
+    map(0x1fa00000, 0x1fa00000); // INTEN0
+    map(0x1fa00004, 0x1fa00004); // INTEN1
+    map(0x1fa00008, 0x1fa00008); // INTEN2
+    map(0x1fa0000c, 0x1fa0000c); // INTEN3
+    map(0x1fa00010, 0x1fa00010); // INTEN4
+    map(0x1fa00014, 0x1fa00014); // INTEN5
 
     // Interrupt status ports
-    map(0xbfa00020, 0xbfa00020); // INTST0
-    map(0xbfa00024, 0xbfa00024); // INTST1
-    map(0xbfa00028, 0xbfa00028); // INTST2
-    map(0xbfa0002c, 0xbfa0002c); // INTST3
-    map(0xbfa00030, 0xbfa00030); // INTST4
-    map(0xbfa00034, 0xbfa00034); // INTST5
+    map(0x1fa00020, 0x1fa00020); // INTST0
+    map(0x1fa00024, 0x1fa00024); // INTST1
+    map(0x1fa00028, 0x1fa00028); // INTST2
+    map(0x1fa0002c, 0x1fa0002c); // INTST3
+    map(0x1fa00030, 0x1fa00030); // INTST4
+    map(0x1fa00034, 0x1fa00034); // INTST5
 
     // LEDs
-    map(0xbf3f0000, 0xbf3f0000); // LED_POWER
-    map(0xbf3f0004, 0xbf3f0004); // LED_DISK
-    map(0xbf3f0008, 0xbf3f0008); // LED_FLOPPY
-    map(0xbf3f000c, 0xbf3f000c); // LED_SEC
-    map(0xbf3f0010, 0xbf3f0010); // LED_NET
-    map(0xbf3f0014, 0xbf3f0014); // LED_CD
+    map(0x1f3f0000, 0x1f3f0000); // LED_POWER
+    map(0x1f3f0004, 0x1f3f0004); // LED_DISK
+    map(0x1f3f0008, 0x1f3f0008); // LED_FLOPPY
+    map(0x1f3f000c, 0x1f3f000c); // LED_SEC
+    map(0x1f3f0010, 0x1f3f0010); // LED_NET
+    map(0x1f3f0014, 0x1f3f0014); // LED_CD
 
     // APBus region
-    map(0xbf520004, 0xbf520004); // WBFLUSH
-    map(0xb4c0000c, 0xb4c0000c); // APBUS_INTMSK /* interrupt mask */
-    map(0xb4c00014, 0xb4c00014); // APBUS_INTST /* interrupt status */
-    map(0xb4c0001c, 0xb4c0001c); // APBUS_BER_A /* Bus error address */
-    map(0xb4c00034, 0xb4c00034); // APBUS_CTRL /* configuration control */
-    map(0xb400005c, 0xb400005c); // APBUS_DER_A /* DMA error address */
-    map(0xb4c0006c, 0xb4c0006c); // APBUS_DER_S /* DMA error slot */
-    map(0xb4c00084, 0xb4c00084); // APBUS_DMA /* unmapped DMA coherency */
-    map(0xb4c20000, 0xb4c40000); // APBUS_DMAMAP /* DMA mapping RAM */
+    map(0x1f520004, 0x1f520004); // WBFLUSH
+    map(0x14c0000c, 0x14c0000c); // APBUS_INTMSK /* interrupt mask */
+    map(0x14c00014, 0x14c00014); // APBUS_INTST /* interrupt status */
+    map(0x14c0001c, 0x14c0001c); // APBUS_BER_A /* Bus error address */
+    map(0x14c00034, 0x14c00034); // APBUS_CTRL /* configuration control */
+    map(0x1400005c, 0x1400005c); // APBUS_DER_A /* DMA error address */
+    map(0x14c0006c, 0x14c0006c); // APBUS_DER_S /* DMA error slot */
+    map(0x14c00084, 0x14c00084); // APBUS_DMA /* unmapped DMA coherency */
+    map(0x14c20000, 0x14c40000); // APBUS_DMAMAP /* DMA mapping RAM */
 
     // Serial port (TODO: other serial ports)
-    map(0xbe950000, 0xbe950000); // SCCPORT0A
+    //map(0x1e950000, 0x1e950000); // SCCPORT0A
+	map(0x1e950000, 0x1e950003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
+
+	// TESTING
+	//map(0x1e980000, 0x1e9fffff).ram();
 
 	// TODO: ESCCF?
-	// TODO: map(0xbe900000, 0xbe900000);
+	// TODO: map(0x1e900000, 0x1e900000);
 
     // Sonic network controller (https://git.qemu.org/?p=qemu.git;a=blob;f=hw/net/dp8393x.c;h=674b04b3547cdf312620a13c2f183e0ecfab24fb;hb=HEAD)
-    map(0xbe600000, 0xbe600000); // TODO: this (see https://github.com/NetBSD/src/blob/fc1bde7fb56cf2ceb6c98f29a7547fbd92d9ca25/sys/arch/newsmips/apbus/if_sn_ap.c, https://github.com/NetBSD/src/blob/64b8a48e1288eb3902ed73113d157af50b2ec596/sys/arch/newsmips/apbus/if_snreg.h)
+    map(0x1e600000, 0x1e600000); // TODO: this (see https://github.com/NetBSD/src/blob/fc1bde7fb56cf2ceb6c98f29a7547fbd92d9ca25/sys/arch/newsmips/apbus/if_sn_ap.c, https://github.com/NetBSD/src/blob/64b8a48e1288eb3902ed73113d157af50b2ec596/sys/arch/newsmips/apbus/if_snreg.h)
 
 	// DMA Controller 0
-	//map(0xbe200000, 0xbe20000f).m(m_dma, FUNC(dmac_0448_device::map)); // End addr meeds confirmation
+	//map(0x1e200000, 0x1e20000f).m(m_dma, FUNC(dmac_0448_device::map)); // End addr meeds confirmation
 	// TODO: DMA Controller 1
-	// TODO: map(0xbe300000, 0xbe30000f).m(m_dma, FUNC(dmac_0448_device::map)); // End addr meeds confirmation
+	// TODO: map(0x1e300000, 0x1e30000f).m(m_dma, FUNC(dmac_0448_device::map)); // End addr meeds confirmation
+
+	// No clue what this is, the monitor ROM reads and writes to these areas. Maybe poking at shared RAM regions?
+	//map(0x1f3f0000, 0x1f3f0017).ram();
+	map(0x1ff03000, 0x1ff04003).ram();
 
 	// xb (Sony DSC-39 video card)
-	// TODO: map(0xb4900000, 0xb4900000);
+	// TODO: map(0x14900000, 0x14900000);
 
 	// sb (???)
-	// TODO: map(0xbed00000, 0xbed00000);
+	// TODO: map(0x1ed00000, 0x1ed00000);
 
 	// spifi controller 1 (????, related to DMAC DMA)
-	// TODO: map(0xbe280000, 0xbe280000);
+	// TODO: map(0x1e280000, 0x1e280000);
 
 	// spifi controller 2 (????, related ot DMAC DMA)
-	// TODO: map(0xbe380000, 0xbe380000);
+	// TODO: map(0x1e380000, 0x1e380000);
 
 	// ms (mouse)
-	// TODO: map(0xbf900014, 0xbf900014);
+	// TODO: map(0x1f900014, 0x1f900014);
 
 	// lp (printer port??)
-	// TODO: map(0xbed30000, 0xbed30000);
+	// TODO: map(0x1ed30000, 0x1ed30000);
 
 	// kb (keyboard)
-	// TODO: map(0xbf900000, 0xbf900000);
+	// TODO: map(0x1f900000, 0x1f900000);
 
 	// fd (???)
-	// TODO: map(0xbed20000, 0xbed20000);
+	// TODO: map(0x1ed20000, 0x1ed20000);
 
 
     /*
@@ -549,16 +557,19 @@ void news_r4k_state::common(machine_config &config)
 	m_ram->set_default_size("16M");
 	// TODO: confirm each bank supports 4x1M or 4x4M
 	m_ram->set_extra_options("4M,8M,12M,20M,24M,32M,36M,48M");
+	*/
 
-	DMAC_0448(config, m_dma, 0);
-	m_dma->set_bus(m_cpu, 0);
-	m_dma->out_int_cb().set(FUNC(news_r4k_state::irq_w<DMA>));
-	m_dma->dma_r_cb<1>().set(m_fdc, FUNC(upd72067_device::dma_r));
-	m_dma->dma_w_cb<1>().set(m_fdc, FUNC(upd72067_device::dma_w));
+	//DMAC_0448(config, m_dma, 0);
+	//m_dma->set_bus(m_cpu, 0);
+	//m_dma->out_int_cb().set(FUNC(news_r4k_state::irq_w<DMA>));
+	//m_dma->dma_r_cb<1>().set(m_fdc, FUNC(upd72067_device::dma_r));
+	//m_dma->dma_w_cb<1>().set(m_fdc, FUNC(upd72067_device::dma_w));
 	// TODO: channel 2 audio
 	// TODO: channel 3 video
+	/*
 
 	M48T02(config, m_rtc);
+	*/
 
 	SCC85C30(config, m_scc, 4.9152_MHz_XTAL);
 	m_scc->out_int_callback().set(FUNC(news_r4k_state::irq_w<SCC>));
@@ -579,6 +590,7 @@ void news_r4k_state::common(machine_config &config)
 	m_scc->out_rtsb_callback().set(m_serial[1], FUNC(rs232_port_device::write_rts));
 	m_scc->out_txdb_callback().set(m_serial[1], FUNC(rs232_port_device::write_txd));
 
+/*
 	AM7990(config, m_net);
 	m_net->intr_out().set(FUNC(news_r4k_state::irq_w<LANCE>)).invert();
 	m_net->dma_in().set([this](offs_t offset) { return m_net_ram[offset >> 1]; });
@@ -644,20 +656,8 @@ ROMX_LOAD("mpu-33__ver3.201__1994_sony.ic64", 0x00000, 0x40000, CRC(8a6ca2b7) SH
 //ROM_LOAD64_WORD("051_aa.ic109", 0x00000, 0x80000, CRC(1411cbcb) SHA1(793394cd3919034f85bfb015d6d3c504f83b6626))
 //ROM_LOAD64_WORD("052_aa.ic110", 0x00004, 0x80000, CRC(df0f39da) SHA1(076881da022a3fe6731de0ead217285293c25dc7))
 
-/*
-	 * This is probably a 4-bit device: only the low 4 bits in each location
-	 * are used, and are merged together into bytes when copied into RAM, with
-	 * the most-significant bits at the lower address. The sum of resulting
-	 * big-endian 32-bit words must be zero.
-	 *
-	 * offset  purpose
-	 *  0x00   magic number (0x0f 0x0f)
-	 *  0x10   ethernet mac address (low 4 bits of 12 bytes)
-	 *  0x28   machine identification (low 4 bits of 8 bytes)
-	 *  0x60   model number (null-terminated string)
-	 */
-//ROM_REGION32_BE(0x100, "idrom", 0)
-//ROM_LOAD("idrom.bin", 0x000, 0x100, CRC(17a3d9c6) SHA1(d300e6908210f540951211802c38ad7f8037aa15) BAD_DUMP)
+ROM_REGION32_BE(0x400, "idrom", 0)
+ROM_LOAD("idrom.rom", 0x000, 0x400, CRC(89edfebe) SHA1(3f69ebfaf35610570693edf76aa94c10b30de627) BAD_DUMP)
 ROM_END
 
 //   YEAR  NAME      PARENT  COMPAT  MACHINE   INPUT    CLASS           INIT           COMPANY  FULLNAME                      FLAGS
