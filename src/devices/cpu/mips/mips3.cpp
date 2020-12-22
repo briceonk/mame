@@ -1194,6 +1194,12 @@ inline bool mips3_device::RBYTE(offs_t address, uint32_t *result)
 			return true;
 		}
 		*result = (*m_memory.read_byte)(*m_program, tlbaddress);
+		if(bus_error_pending)
+		{
+			handle_bus_error();
+			*result = 0;  // Rollback result
+			return false;
+		}
 	}
 	else
 	{
@@ -1227,6 +1233,12 @@ inline bool mips3_device::RHALF(offs_t address, uint32_t *result)
 			return true;
 		}
 		*result = (*m_memory.read_word)(*m_program, tlbaddress);
+		if(bus_error_pending)
+		{
+			handle_bus_error();
+			*result = 0;  // Rollback result
+			return false;
+		}
 	}
 	else
 	{
@@ -1260,6 +1272,12 @@ inline bool mips3_device::RWORD(offs_t address, uint32_t *result, bool insn)
 			return true;
 		}
 		*result = (*m_memory.read_dword)(*m_program, tlbaddress);
+		if(bus_error_pending)
+		{
+			handle_bus_error();
+			*result = 0;  // Rollback result
+			return false;
+		}
 	}
 	else
 	{
@@ -1283,6 +1301,12 @@ inline bool mips3_device::RWORD_MASKED(offs_t address, uint32_t *result, uint32_
 	if (tlbval & VTLB_READ_ALLOWED)
 	{
 		*result = (*m_memory.read_dword_masked)(*m_program, (tlbval & ~0xfff) | (address & 0xfff), mem_mask);
+		if(bus_error_pending)
+		{
+			handle_bus_error();
+			*result = 0;  // Rollback result
+			return false;
+		}
 	}
 	else
 	{
@@ -1306,6 +1330,12 @@ inline bool mips3_device::RDOUBLE(offs_t address, uint64_t *result)
 	if (tlbval & VTLB_READ_ALLOWED)
 	{
 		*result = (*m_memory.read_qword)(*m_program, (tlbval & ~0xfff) | (address & 0xfff));
+		if(bus_error_pending)
+		{
+			handle_bus_error();
+			*result = 0;  // Rollback result
+			return false;
+		}
 	}
 	else
 	{
@@ -1329,6 +1359,12 @@ inline bool mips3_device::RDOUBLE_MASKED(offs_t address, uint64_t *result, uint6
 	if (tlbval & VTLB_READ_ALLOWED)
 	{
 		*result = (*m_memory.read_qword_masked)(*m_program, (tlbval & ~0xfff) | (address & 0xfff), mem_mask);
+		if(bus_error_pending)
+		{
+			handle_bus_error();
+			*result = 0;  // Rollback result
+			return false;
+		}
 	}
 	else
 	{
@@ -1362,6 +1398,10 @@ inline void mips3_device::WBYTE(offs_t address, uint8_t data)
 			return;
 		}
 		(*m_memory.write_byte)(*m_program, tlbaddress, data);
+		if(bus_error_pending)
+		{
+			handle_bus_error();
+		}
 	}
 	else
 	{
@@ -5049,6 +5089,16 @@ void r5900le_device::handle_sdc2(uint32_t op)
 #include "o2dprintf.hxx"
 #endif
 
+void mips3_device::handle_bus_error() {
+	bus_error_pending = false;
+	generate_exception(EXCEPTION_BUSDATA, 1);
+
+}
+
+void mips3_device::bus_error() {
+	bus_error_pending = true;
+}
+
 void mips3_device::execute_run()
 {
 	if (m_isdrc)
@@ -5109,6 +5159,7 @@ void mips3_device::execute_run()
 		/* instruction fetch */
 		if(!RWORD(m_core->pc, &op, true))
 		{
+			// TODO: EXCEPTION_BUSINST?
 			continue;
 		}
 

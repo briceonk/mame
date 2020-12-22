@@ -311,6 +311,7 @@ public:
 	void clear_fastram(uint32_t select_start);
 	void mips3drc_set_options(uint32_t options);
 	void mips3drc_add_hotspot(offs_t pc, uint32_t opcode, uint32_t cycles);
+	void bus_error();
 
 protected:
 	// device-level overrides
@@ -338,6 +339,7 @@ protected:
 	virtual std::unique_ptr<util::disasm_interface> create_disassembler() override;
 
 	void invalid_instruction(uint32_t op);
+	void handle_bus_error();
 
 	virtual bool RBYTE(offs_t address, uint32_t *result);
 	virtual bool RHALF(offs_t address, uint32_t *result);
@@ -418,6 +420,7 @@ protected:
 	uint32_t        m_ll_value;
 	uint64_t        m_lld_value;
 	uint32_t        m_badcop_value;
+	bool bus_error_pending;
 
 	/* endian-dependent load/store */
 	typedef void (mips3_device::*loadstore_func)(uint32_t op);
