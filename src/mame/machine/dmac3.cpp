@@ -24,14 +24,14 @@
 DEFINE_DEVICE_TYPE(DMAC3, dmac3_device, "dmac3", "Sony CXD8403Q DMA Controller")
 
 dmac3_device::dmac3_device(machine_config const &mconfig, char const *tag, device_t *owner, u32 clock)
-	: device_t(mconfig, DMAC3, tag, owner, clock)
+	: device_t(mconfig, DMAC3, tag, owner, clock), m_irq(*this)
 {
 }
 
 void dmac3_device::map_dma_ram(address_map &map)
 {
 	// Host platform configures the use of RAM at device attach
-	map(0x0, map_ram_size - 1).ram();
+	map(0x0, MAP_RAM_SIZE - 1).ram();
 }
 
 uint32_t dmac3_device::csr_r(DMAC3_Controller controller)
@@ -44,7 +44,7 @@ uint32_t dmac3_device::intr_r(DMAC3_Controller controller)
 {
 	uint32_t val = m_controllers[controller].intr;
 	// hack
-	val |= 0x1;
+	val |= 0x1; // I can't remember what this hack is for - let's find out
 	LOG("dmac3-%d intr_r: 0x%x\n", controller, val);
 	return val;
 }
@@ -77,6 +77,14 @@ void dmac3_device::intr_w(DMAC3_Controller controller, uint32_t data)
 {
 	LOG("dmac3-%d intr_w: 0x%x\n", controller, data);
 	m_controllers[controller].intr = data;
+
+	// horrible hack to see what happens
+	if (data == 0x203)
+	{
+		// set interrupt as if we were done transferring data
+		m_controllers[controller].intr |= 0x400; // EOPI
+		m_irq(1);
+	}
 }
 
 void dmac3_device::length_w(DMAC3_Controller controller, uint32_t data)

@@ -49,12 +49,19 @@ public:
         map(0x10, 0x13).rw(FUNC(dmac3_device::conf_r<controller>), FUNC(dmac3_device::conf_w<controller>));
     }
 
+    // Interrupts
+    auto irq_out() { return m_irq.bind(); }
+
 protected:
 	virtual void device_start() override {};
 
     // DMAC3 requires off-board RAM to be allocated for the DMA map
     // The platform host controls this configuration.
-    const uint32_t map_ram_size = 0x20000; // 128 kibibytes
+    const uint32_t MAP_RAM_SIZE = 0x20000; // 128 kibibytes
+
+    // Interrupt
+    devcb_write_line m_irq;
+    void device_resolve_objects() override { m_irq.resolve_safe(); }
 
     // DMAC3 has two controllers on-chip
     struct dmac3_register_file
