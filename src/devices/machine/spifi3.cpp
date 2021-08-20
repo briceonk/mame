@@ -169,7 +169,7 @@ void spifi3_device::auxctrl_w(uint32_t data)
 	}
 	if(spifi_reg.auxctrl & AUXCTRL_DMAEDGE)
 	{
-		// do we need to take action here?
+		// do we need to take action here? might be what enables DMA mode/DRQ?
 		LOG("DMAEDGE asserted\n");
 	}
 }
@@ -191,4 +191,514 @@ void spifi3_device::fifoctrl_w(uint32_t data)
 	if(spifi_reg.fifoctrl & FIFOC_CLRODD) { LOG("fifoctrl.CLRODD: unimplemented"); } // ??? clear of some sort
 	if(spifi_reg.fifoctrl & FIFOC_FLUSH) { LOG("fifoctrl.FLUSH: unimplemented"); } // flush FIFO
 	if(spifi_reg.fifoctrl & FIFOC_LOAD) { LOG("fifoctrl.LOAD: unimplemented"); } // Load FIFO synchronously
+}
+
+void spifi3_device::check_irq()
+{
+	/* TODO: SPIFI3 equiv
+	bool oldirq = irq;
+	irq = istatus != 0;
+
+	if(irq != oldirq)
+	{
+		m_irq_handler(irq);
+	}
+	*/
+}
+
+void spifi3_device::reset_disconnect()
+{
+	scsi_bus->ctrl_w(scsi_refid, 0, ~S_RST);
+
+	// command_pos = 0; TODO: spifi3 equiv
+	// command_length = 0; TODO: spifi3 equiv
+	// memset(command, 0, sizeof(command)); TODO: spifi3 equiv
+	mode = MODE_D;
+}
+
+void spifi3_device::step(bool timeout)
+{
+	uint32_t ctrl = scsi_bus->ctrl_r();
+	uint32_t data = scsi_bus->data_r();
+	//uint8_t c     = command[0] & 0x7f; TODO: spifi3 equiv
+	// SPIFI3 has an 8-slot buffer for commands. NetBSD source code seems to show that the initiator commands
+	// are written into cmbuf[id] (7), with the ability to pull info about other IDs from other cmbuf slots.
+
+	//LOGMASKED(LOG_STATE, "state=%d.%d %s\n", state & STATE_MASK, (state & SUB_MASK) >> SUB_SHIFT, timeout ? "timeout" : "change");
+
+	if(mode == MODE_I && !(ctrl & S_BSY)) // Idle mode or bus isn't doing anything
+	{
+		state = IDLE; // Force idle state (if BSY is now deasserted and we're in idle mode)
+		// istatus |= I_DISCONNECT; // Set disconnected flag TODO: spifi3 equiv
+		reset_disconnect();
+		check_irq();
+	}
+	switch(state & SUB_MASK ? state & SUB_MASK : state & STATE_MASK)
+	{
+		case IDLE:
+		{
+			// Don't need to do anything
+			break;
+		}
+
+		case BUSRESET_WAIT_INT:
+		{
+			// Bus was reset by a command, go to idle state and clear reset signal
+			state = IDLE;
+			scsi_bus->ctrl_w(scsi_refid, 0, S_RST);
+			reset_disconnect();
+
+			// TODO: spifi3 equiv of the below
+			/*if (!(config & 0x40)) {
+				istatus |= I_SCSI_RESET;
+				check_irq();
+			}*/
+			break;
+		}
+
+		case ARB_COMPLETE << SUB_SHIFT: 
+		{
+			if(!timeout) // Synchronize state to clock
+			{
+				break;
+			}
+
+			// Scan to see if we won arbitration
+			int arbitrationWinner;
+			for(arbitrationWinner = 7; arbitrationWinner >= 0 && !(data & (1<<arbitrationWinner)); arbitrationWinner--) {};
+			if(arbitrationWinner != scsi_id) {
+				scsi_bus->data_w(scsi_refid, 0);
+				scsi_bus->ctrl_w(scsi_refid, 0, S_ALL);
+				fatalerror("spifi3_device::step need to wait for bus free (lost arbitration)\n");
+			}
+
+			// Now that we won arbitration, we need to assert SEL and wait for the bus to settle.
+			state = (state & STATE_MASK) | (ARB_ASSERT_SEL << SUB_SHIFT);
+			scsi_bus->ctrl_w(scsi_refid, S_SEL, S_SEL);
+			//delay(6); TODO: spifi3 equiv
+			break;
+		}
+
+	case ARB_ASSERT_SEL << SUB_SHIFT:
+	{
+		if(!timeout) // Synchronize state to clock
+		{
+			break;
+		}
+
+		// scsi_bus->data_w(scsi_refid, (1<<scsi_id) | (1<<bus_id)); TODO: spifi3 equiv
+		state = (state & STATE_MASK) | (ARB_SET_DEST << SUB_SHIFT);
+		//delay_cycles(4); TODO: spifi3 equiv
+		break;
+	}
+
+	case ARB_SET_DEST << SUB_SHIFT:
+	{
+		if(!timeout) // Synchronize state to clock
+		{
+			break;
+		}
+
+		state = (state & STATE_MASK) | (ARB_RELEASE_BUSY << SUB_SHIFT);
+		// scsi_bus->ctrl_w(scsi_refid, c == CD_SELECT_ATN || c == CD_SELECT_ATN_STOP ? S_ATN : 0, S_ATN|S_BSY); TODO: spifi3 equiv
+		// delay(2); TODO: spifi3 equiv
+		break;
+	}
+
+	case ARB_RELEASE_BUSY << SUB_SHIFT:
+	{
+		if(!timeout) // Synchronize state to clock
+		{
+			break;
+		}
+
+		if(ctrl & S_BSY) // Check if target responded
+		{
+			state = (state & STATE_MASK) | (ARB_DESKEW_WAIT << SUB_SHIFT);
+			/* TODO: spifi3 equiv
+			if(c == CD_RESELECT)
+			{
+				scsi_bus->ctrl_w(scsi_refid, S_BSY, S_BSY);
+			}
+			delay_cycles(2);
+			*/
+		} 
+		else // If not, we ran out of time - wait until the next timeout and check again
+		{
+			state = (state & STATE_MASK) | (ARB_TIMEOUT_BUSY << SUB_SHIFT);
+			/* TODO: spifi3 equiv?
+#ifdef DELAY_HACK
+			delay(1);
+#else
+			delay(8192*select_timeout);
+#endif
+*/
+		}
+		break;
+	}
+
+	case ARB_DESKEW_WAIT << SUB_SHIFT:
+	{
+		if(!timeout)
+		{
+			break;
+		}
+
+		scsi_bus->data_w(scsi_refid, 0);
+		scsi_bus->ctrl_w(scsi_refid, 0, S_SEL); // Clear SEL - target may now assert REQ
+
+		/* TODO: spifi3 equiv
+		if(c == CD_RESELECT) 
+		{
+			LOG("mode switch to Target\n");
+			mode = MODE_T;
+		} 
+		else 
+		{
+			LOG("mode switch to Initiator\n");
+			mode = MODE_I;
+		}
+		*/
+
+		state &= STATE_MASK; // Clear sub step?
+		step(true); // Process next step
+		break;
+	}
+
+	case ARB_TIMEOUT_BUSY << SUB_SHIFT:
+	{
+		if(timeout) // No response from target
+		{
+			scsi_bus->data_w(scsi_refid, 0);
+			LOG("select timeout\n");
+			state = (state & STATE_MASK) | (ARB_TIMEOUT_ABORT << SUB_SHIFT); // handle timeout
+			// delay(1000); TODO: spifi3 equiv
+		}
+		else if(ctrl & S_BSY) // Got response from target, wait before allowing transaction
+		{
+			state = (state & STATE_MASK) | (ARB_DESKEW_WAIT << SUB_SHIFT);
+			/*if(c == CD_RESELECT) TODO: spifi3 equiv
+			{
+				scsi_bus->ctrl_w(scsi_refid, S_BSY, S_BSY);
+			}*/
+			// delay_cycles(2); TODO: spifi3 equiv
+		}
+		break;
+	}
+
+	case ARB_TIMEOUT_ABORT << SUB_SHIFT: // Need to reset bus unless the target responded
+	{
+		if(!timeout)
+		{
+			break;
+		}
+
+		if(ctrl & S_BSY) // Last chance for target to respond
+		{
+			state = (state & STATE_MASK) | (ARB_DESKEW_WAIT << SUB_SHIFT);
+			/* TODO: spifi3 equiv
+			if(c == CD_RESELECT)
+			{
+				scsi_bus->ctrl_w(scsi_refid, S_BSY, S_BSY);
+			}
+			delay_cycles(2);
+			*/
+		} 
+		else // If not, force bus free
+		{
+			scsi_bus->ctrl_w(scsi_refid, 0, S_ALL);
+			state = IDLE;
+			// istatus |= I_DISCONNECT; TODO: spifi3 equiv
+			reset_disconnect();
+			check_irq();
+		}
+		break;
+	}
+
+/*
+	case SEND_WAIT_SETTLE << SUB_SHIFT:
+		if(!timeout)
+			break;
+
+		state = (state & STATE_MASK) | (SEND_WAIT_REQ_0 << SUB_SHIFT);
+		step(false);
+		break;
+
+	case SEND_WAIT_REQ_0 << SUB_SHIFT:
+		if(ctrl & S_REQ)
+			break;
+		state = state & STATE_MASK;
+		scsi_bus->data_w(scsi_refid, 0);
+		scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
+		step(false);
+		break;
+
+	case RECV_WAIT_REQ_1 << SUB_SHIFT:
+		if(!(ctrl & S_REQ))
+			break;
+
+		state = (state & STATE_MASK) | (RECV_WAIT_SETTLE << SUB_SHIFT);
+		delay_cycles(sync_period);
+		break;
+
+	case RECV_WAIT_SETTLE << SUB_SHIFT:
+		if(!timeout)
+			break;
+
+		if((state & STATE_MASK) != INIT_XFR_RECV_PAD)
+			fifo_push(scsi_bus->data_r());
+		scsi_bus->ctrl_w(scsi_refid, S_ACK, S_ACK);
+		state = (state & STATE_MASK) | (RECV_WAIT_REQ_0 << SUB_SHIFT);
+		step(false);
+		break;
+
+	case RECV_WAIT_REQ_0 << SUB_SHIFT:
+		if(ctrl & S_REQ)
+			break;
+		state = state & STATE_MASK;
+		step(false);
+		break;
+
+	case DISC_SEL_ARBITRATION_INIT:
+		// wait until a command is in the fifo
+		if (!fifo_pos) {
+			// dma starts after bus arbitration/selection is complete
+			check_drq();
+			break;
+		}
+
+		command_length = fifo_pos + tcounter;
+		state = DISC_SEL_ARBITRATION;
+		step(false);
+		break;
+
+	case DISC_SEL_ARBITRATION:
+		if(c == CD_SELECT) {
+			state = DISC_SEL_WAIT_REQ;
+		} else
+			state = DISC_SEL_ATN_WAIT_REQ;
+
+		scsi_bus->ctrl_wait(scsi_refid, S_REQ, S_REQ);
+		if(ctrl & S_REQ)
+			step(false);
+		break;
+
+	case DISC_SEL_ATN_WAIT_REQ:
+		if(!(ctrl & S_REQ))
+			break;
+		if((ctrl & S_PHASE_MASK) != S_PHASE_MSG_OUT) {
+			function_complete();
+			break;
+		}
+		if(c == CD_SELECT_ATN)
+			scsi_bus->ctrl_w(scsi_refid, 0, S_ATN);
+		state = DISC_SEL_ATN_SEND_BYTE;
+		send_byte();
+		break;
+
+	case DISC_SEL_ATN_SEND_BYTE:
+		command_length--;
+		if(c == CD_SELECT_ATN_STOP) {
+			seq = 1;
+			function_bus_complete();
+		} else {
+			state = DISC_SEL_WAIT_REQ;
+		}
+		break;
+
+	case DISC_SEL_WAIT_REQ:
+		if(!(ctrl & S_REQ))
+			break;
+		if((ctrl & S_PHASE_MASK) != S_PHASE_COMMAND) {
+			if(!command_length)
+				seq = 4;
+			else
+				seq = 2;
+			scsi_bus->ctrl_wait(scsi_refid, 0, S_REQ);
+			function_bus_complete();
+			break;
+		}
+		if(seq < 3)
+			seq = 3;
+		state = DISC_SEL_SEND_BYTE;
+		send_byte();
+		break;
+
+	case DISC_SEL_SEND_BYTE:
+		if(command_length) {
+			command_length--;
+			if(!command_length)
+				seq = 4;
+		}
+
+		state = DISC_SEL_WAIT_REQ;
+		break;
+
+	case INIT_CPT_RECV_BYTE_ACK:
+		state = INIT_CPT_RECV_WAIT_REQ;
+		scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
+		break;
+
+	case INIT_CPT_RECV_WAIT_REQ:
+		if(!(ctrl & S_REQ))
+			break;
+
+		if((ctrl & S_PHASE_MASK) != S_PHASE_MSG_IN) {
+			command_pos = 0;
+			bus_complete();
+		} else {
+			state = INIT_CPT_RECV_BYTE_NACK;
+			recv_byte();
+		}
+		break;
+
+	case INIT_CPT_RECV_BYTE_NACK:
+		function_complete();
+		break;
+
+	case INIT_MSG_WAIT_REQ:
+		if((ctrl & (S_REQ|S_BSY)) == S_BSY)
+			break;
+		bus_complete();
+		break;
+
+	case INIT_XFR:
+		switch(xfr_phase) {
+		case S_PHASE_DATA_OUT:
+		case S_PHASE_COMMAND:
+		case S_PHASE_MSG_OUT:
+			state = INIT_XFR_SEND_BYTE;
+
+			// can't send if the fifo is empty
+			if (fifo_pos == 0)
+				break;
+
+			// if it's the last message byte, deassert ATN before sending
+			if (xfr_phase == S_PHASE_MSG_OUT && ((!dma_command && fifo_pos == 1) || (dma_command && tcounter == 1)))
+				scsi_bus->ctrl_w(scsi_refid, 0, S_ATN);
+
+			send_byte();
+			break;
+
+		case S_PHASE_DATA_IN:
+		case S_PHASE_STATUS:
+		case S_PHASE_MSG_IN:
+			// can't receive if the fifo is full
+			if (fifo_pos == 16)
+				break;
+
+			// if it's the last message byte, ACK remains asserted, terminate with function_complete()
+			state = (xfr_phase == S_PHASE_MSG_IN && (!dma_command || tcounter == 1)) ? INIT_XFR_RECV_BYTE_NACK : INIT_XFR_RECV_BYTE_ACK;
+
+			recv_byte();
+			break;
+
+		default:
+			LOG("xfer on phase %d\n", scsi_bus->ctrl_r() & S_PHASE_MASK);
+			function_complete();
+			break;
+		}
+		break;
+
+	case INIT_XFR_WAIT_REQ:
+		if(!(ctrl & S_REQ))
+			break;
+
+		// check for command complete
+		if ((dma_command && (status & S_TC0) && (dma_dir == DMA_IN || fifo_pos == 0)) // dma in/out: transfer count == 0
+		|| (!dma_command && (xfr_phase & S_INP) == 0 && fifo_pos == 0)      // non-dma out: fifo empty
+		|| (!dma_command && (xfr_phase & S_INP) == S_INP && fifo_pos == 1)) // non-dma in: every byte
+			state = INIT_XFR_BUS_COMPLETE;
+		else
+			// check for phase change
+			if((ctrl & S_PHASE_MASK) != xfr_phase) {
+				command_pos = 0;
+				state = INIT_XFR_BUS_COMPLETE;
+			} else {
+				state = INIT_XFR;
+			}
+		step(false);
+		break;
+
+	case INIT_XFR_SEND_BYTE:
+		state = INIT_XFR_WAIT_REQ;
+		step(false);
+		break;
+
+	case INIT_XFR_RECV_BYTE_ACK:
+		state = INIT_XFR_WAIT_REQ;
+		scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
+		break;
+
+	case INIT_XFR_RECV_BYTE_NACK:
+		state = INIT_XFR_FUNCTION_COMPLETE;
+		step(false);
+		break;
+
+	case INIT_XFR_FUNCTION_COMPLETE:
+		// wait for dma transfer to complete or fifo to drain
+		if (dma_command && !(status & S_TC0) && fifo_pos)
+			break;
+
+		function_complete();
+		break;
+
+	case INIT_XFR_BUS_COMPLETE:
+		// wait for dma transfer to complete or fifo to drain
+		if (dma_command && !(status & S_TC0) && fifo_pos)
+			break;
+
+		bus_complete();
+		break;
+
+	case INIT_XFR_SEND_PAD_WAIT_REQ:
+		if(!(ctrl & S_REQ))
+			break;
+
+		if((ctrl & S_PHASE_MASK) != xfr_phase) {
+			command_pos = 0;
+			bus_complete();
+		} else {
+			state = INIT_XFR_SEND_PAD;
+			send_byte();
+		}
+		break;
+
+	case INIT_XFR_SEND_PAD:
+		decrement_tcounter();
+		if(!(status & S_TC0)) {
+			state = INIT_XFR_SEND_PAD_WAIT_REQ;
+			step(false);
+		} else
+			function_complete();
+		break;
+
+	case INIT_XFR_RECV_PAD_WAIT_REQ:
+		if(!(ctrl & S_REQ))
+			break;
+
+		if((ctrl & S_PHASE_MASK) != xfr_phase) {
+			command_pos = 0;
+			bus_complete();
+		} else {
+			state = INIT_XFR_RECV_PAD;
+			recv_byte();
+		}
+		break;
+
+	case INIT_XFR_RECV_PAD:
+		decrement_tcounter();
+		if(!(status & S_TC0)) {
+			state = INIT_XFR_RECV_PAD_WAIT_REQ;
+			scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
+			step(false);
+		} else
+			function_complete();
+		break;
+	*/
+	default:
+		LOG("step() unexpected state %d.%d\n", state & STATE_MASK, (state & SUB_MASK) >> SUB_SHIFT);
+		exit(0);
+	}
+
 }
