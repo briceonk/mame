@@ -5,7 +5,6 @@
 /*
  * HP 1TV3-0302 SPIFI3-SE SCSI controller
  *
- * This is just a skeleton that logs accesses to inspect SCSI transactions.
  * Datasheets for this seem to be impossible to find - the only avaliable implementation to reference that I have
  * found is the Sony NEWS APBus NetBSD driver. Hopefully a datasheet will turn up eventually.
  * Based on internet research, it seems some HP PA-RISC systems also used the SPIFI3, including the E55.

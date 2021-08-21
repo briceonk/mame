@@ -17,7 +17,7 @@
 #define VERBOSE 1
 #include "logmacro.h"
 
-DEFINE_DEVICE_TYPE(SPIFI3, spifi3_device, "spifi3", "HP 1TV3-0302 SPIFI3 SCSI 1 Protocol Controller")
+DEFINE_DEVICE_TYPE(SPIFI3, spifi3_device, "spifi3", "HP 1TV3-0302 SPIFI3 SCSI-2 Protocol Controller")
 
 spifi3_device::spifi3_device(machine_config const &mconfig, char const *tag, device_t *owner, u32 clock)
 	: nscsi_device(mconfig, SPIFI3, tag, owner, clock)
@@ -117,7 +117,7 @@ void spifi3_device::cmd_buf_w(offs_t offset, uint8_t data)
 	// so, divide the offset by 16 (truncated) to get the cmd entry
 	int cmd_entry = offset / 16;
 
-	// now, return the right item
+	// now, write the appropriate item
 	// this is ugly, I need to improve this
 	int register_offset = offset % 16;
 	if (register_offset < 12)
