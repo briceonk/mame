@@ -952,7 +952,7 @@ ROMX_LOAD("mpu-33__ver3.201__1994_sony.rom", 0x00000, 0x40000, CRC(8a6ca2b7) SHA
 // idrom and macrom dumps include unmapped space that would ideally be umasked, but this is functionally the same.
 // Additionally, there is machine-specific information contained within each of these, so there are no "golden" full-chip hashes.
 ROM_REGION64_BE(0x400, "idrom", 0)
-ROM_LOAD("idrom.rom", 0x000, 0x400, CRC(89edfebe) SHA1(3f69ebfaf35610570693edf76aa94c10b30de627) BAD_DUMP)
+ROM_LOAD("idrom.rom", 0x000, 0x400, CRC(28ff30c9) SHA1(288fd7d9133ac5e40d90a9b6e24db057cd6b05ad) BAD_DUMP)
 
 ROM_REGION64_BE(0x400, "macrom", 0)
 ROM_LOAD("macrom.rom", 0x000, 0x400, CRC(c3c9f79c) SHA1(a430787b77604d72eb99773817e2405ba414d306) BAD_DUMP)
