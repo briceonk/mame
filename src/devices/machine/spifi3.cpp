@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:Brice Onken
+// copyright-holders:Brice Onken,Olivier Galibert
 
 /*
  * HP 1TV3-0302 SPIFI3-SE SCSI controller
@@ -42,17 +42,12 @@ void spifi3_device::map(address_map &map)
 	map(0x2c, 0x2f).lrw32(NAME([this]() { LOG("read spifi_reg.prctrl = 0x%x\n", spifi_reg.prctrl); return spifi_reg.prctrl; }), NAME([this](uint32_t data) { LOG("write spifi_reg.prctrl = 0x%x\n", data); spifi_reg.prctrl = data; }));
 	map(0x30, 0x33).lrw32(NAME([this]() { LOG("read spifi_reg.prstat = 0x%x\n", spifi_reg.prstat); return spifi_reg.prstat; }), NAME([this](uint32_t data) { LOG("write spifi_reg.prstat = 0x%x\n", data); spifi_reg.prstat = data; }));
 	map(0x34, 0x37).lrw32(NAME([this]() { LOG("read spifi_reg.init_status = 0x%x\n", spifi_reg.init_status); return spifi_reg.init_status; }), NAME([this](uint32_t data) { LOG("write spifi_reg.init_status = 0x%x\n", data); spifi_reg.init_status = data; }));
-	map(0x38, 0x3b).rw(FUNC(spifi3_device::fifoctrl_r), FUNC(spifi3_device::fifoctrl_w));
 	map(0x3c, 0x3f).lrw32(NAME([this]() { LOG("read spifi_reg.fifodata = 0x%x\n", spifi_reg.fifodata); return spifi_reg.fifodata; }), NAME([this](uint32_t data) { LOG("write spifi_reg.fifodata = 0x%x\n", data); spifi_reg.fifodata = data; }));
-	map(0x40, 0x43).lrw32(NAME([this]() { LOG("read spifi_reg.config = 0x%x\n", spifi_reg.config); return spifi_reg.config; }), NAME([this](uint32_t data) { LOG("write spifi_reg.config = 0x%x\n", data); spifi_reg.config = data; }));
 	map(0x44, 0x47).lrw32(NAME([this]() { LOG("read spifi_reg.data_xfer = 0x%x\n", spifi_reg.data_xfer); return spifi_reg.data_xfer; }), NAME([this](uint32_t data) { LOG("write spifi_reg.data_xfer = 0x%x\n", data); spifi_reg.data_xfer = data; }));
 	map(0x48, 0x4b).lrw32(NAME([this]() { LOG("read spifi_reg.autocmd = 0x%x\n", spifi_reg.autocmd); return spifi_reg.autocmd; }), NAME([this](uint32_t data) { LOG("write spifi_reg.autocmd = 0x%x\n", data); spifi_reg.autocmd = data; }));
 	map(0x4c, 0x4f).lrw32(NAME([this]() { LOG("read spifi_reg.autostat = 0x%x\n", spifi_reg.autostat); return spifi_reg.autostat; }), NAME([this](uint32_t data) { LOG("write spifi_reg.autostat = 0x%x\n", data); spifi_reg.autostat = data; }));
 	map(0x50, 0x53).lrw32(NAME([this]() { LOG("read spifi_reg.resel = 0x%x\n", spifi_reg.resel); return spifi_reg.resel; }), NAME([this](uint32_t data) { LOG("write spifi_reg.resel = 0x%x\n", data); spifi_reg.resel = data; }));
-	map(0x54, 0x57).lrw32(NAME([this]() { LOG("read spifi_reg.select = 0x%x\n", spifi_reg.select); return spifi_reg.select; }), NAME([this](uint32_t data) { LOG("write spifi_reg.select = 0x%x\n", data); spifi_reg.select = data; }));
 	map(0x58, 0x5b).lrw32(NAME([this]() { LOG("read spifi_reg.prcmd = 0x%x\n", spifi_reg.prcmd); return spifi_reg.prcmd; }), NAME([this](uint32_t data) { LOG("write spifi_reg.prcmd = 0x%x\n", data); spifi_reg.prcmd = data; }));
-	map(0x5c, 0x5f).rw(FUNC(spifi3_device::auxctrl_r), FUNC(spifi3_device::auxctrl_w));
-	map(0x60, 0x63).lrw32(NAME([this]() { LOG("read spifi_reg.autodata = 0x%x\n", spifi_reg.autodata); return spifi_reg.autodata; }), NAME([this](uint32_t data) { LOG("write spifi_reg.autodata = 0x%x\n", data); spifi_reg.autodata = data; }));
 	map(0x64, 0x67).lrw32(NAME([this]() { LOG("read spifi_reg.loopctrl = 0x%x\n", spifi_reg.loopctrl); return spifi_reg.loopctrl; }), NAME([this](uint32_t data) { LOG("write spifi_reg.loopctrl = 0x%x\n", data); spifi_reg.loopctrl = data; }));
 	map(0x68, 0x6b).lrw32(NAME([this]() { LOG("read spifi_reg.loopdata = 0x%x\n", spifi_reg.loopdata); return spifi_reg.loopdata; }), NAME([this](uint32_t data) { LOG("write spifi_reg.loopdata = 0x%x\n", data); spifi_reg.loopdata = data; }));
 	map(0x6c, 0x6f).lrw32(NAME([this]() { LOG("read spifi_reg.identify = 0x%x\n", spifi_reg.identify); return spifi_reg.identify; }), NAME([this](uint32_t data) { LOG("write spifi_reg.identify = 0x%x\n", data); spifi_reg.identify = data; }));
@@ -70,6 +65,15 @@ void spifi3_device::map(address_map &map)
 	map(0x9c, 0x9f).lrw32(NAME([this]() { LOG("read spifi_reg.quepage = 0x%x\n", spifi_reg.quepage); return spifi_reg.quepage; }), NAME([this](uint32_t data) { LOG("write spifi_reg.quepage = 0x%x\n", data); spifi_reg.quepage = data; }));
 	// mirror of above values goes here
 	map(0x200, 0x3ff).rw(FUNC(spifi3_device::cmd_buf_r), FUNC(spifi3_device::cmd_buf_w)).umask32(0xff);
+
+	// Below this line probably won't need to change
+	map(0x38, 0x3b).rw(FUNC(spifi3_device::fifoctrl_r), FUNC(spifi3_device::fifoctrl_w));
+	map(0x40, 0x43).lrw32(NAME([this]() { LOG("read spifi_reg.config = 0x%x\n", spifi_reg.config); return spifi_reg.config; }), NAME([this](uint32_t data) { LOG("write spifi_reg.config = 0x%x\n", data); spifi_reg.config = data; }));
+	map(0x54, 0x57).w(FUNC(spifi3_device::select_w));
+	map(0x54, 0x57).lr32(NAME([this]() { LOG("read spifi_reg.select = 0x%x\n", spifi_reg.select); return spifi_reg.select; }));
+	map(0x5c, 0x5f).rw(FUNC(spifi3_device::auxctrl_r), FUNC(spifi3_device::auxctrl_w));
+	map(0x60, 0x63).w(FUNC(spifi3_device::autodata_w));
+	map(0x60, 0x63).lr32(NAME([this]() { LOG("read spifi_reg.autodata = 0x%x\n", spifi_reg.autodata); return spifi_reg.autodata; }));
 }
 
 uint8_t spifi3_device::cmd_buf_r(offs_t offset)
@@ -177,20 +181,61 @@ void spifi3_device::auxctrl_w(uint32_t data)
 uint32_t spifi3_device::fifoctrl_r()
 {
 	LOG("read spifi_reg.fifoctrl = 0x%x\n", spifi_reg.fifoctrl);
-	// TODO: calculate free FIFO slots to fill FIFOC_FSLOT
+
+	auto evenCount = 8 - m_even_fifo.size(); // How does the count actually work? need to test
+	spifi_reg.fifoctrl &= ~FIFOC_FSLOT;
+	spifi_reg.fifoctrl |= evenCount & FIFOC_FSLOT;
+
 	return spifi_reg.fifoctrl;
 }
 
 void spifi3_device::fifoctrl_w(uint32_t data)
 {
 	LOG("write spifi_reg.fifoctrl = 0x%x\n", data);
-	spifi_reg.fifoctrl = data; // TODO: this might not be persisted - read/write might be different. TBD.
-	if(spifi_reg.fifoctrl & FIFOC_SSTKACT) { LOG("fifoctrl.SSTKACT: unimplemented"); } // likely RO guess: NetBSD uses this to know when synchronous data should be loaded into the FIFO?
-	if(spifi_reg.fifoctrl & FIFOC_RQOVRN) { LOG("fifoctrl.RQOVRN: unimplemented"); } // likely RO - Whatever this is, it would cause NetBSD to panic
-	if(spifi_reg.fifoctrl & FIFOC_CLREVEN) { LOG("fifoctrl.CLREVEN: unimplemented"); } // clear FIFO
-	if(spifi_reg.fifoctrl & FIFOC_CLRODD) { LOG("fifoctrl.CLRODD: unimplemented"); } // ??? clear of some sort
+	//spifi_reg.fifoctrl = data; // TODO: this might not be persisted - read/write might be different. TBD.
+	if(spifi_reg.fifoctrl & FIFOC_SSTKACT) { LOG("fifoctrl.SSTKACT: w unimplemented"); } // likely RO guess: NetBSD uses this to know when synchronous data should be loaded into the FIFO?
+	if(spifi_reg.fifoctrl & FIFOC_RQOVRN) { LOG("fifoctrl.RQOVRN: w unimplemented"); } // likely RO - Whatever this is, it would cause NetBSD to panic
+	if(spifi_reg.fifoctrl & FIFOC_CLREVEN)
+	{
+		LOG("Clearing even FIFO of %d items", m_even_fifo.size());
+		while (!m_even_fifo.empty())
+		{
+			m_even_fifo.pop();
+		}
+	}
+	if(spifi_reg.fifoctrl & FIFOC_CLRODD)
+	{
+		LOG("Clearing odd FIFO of %d items", m_odd_fifo.size());
+		while (!m_odd_fifo.empty())
+		{
+			m_odd_fifo.pop();
+		}
+	}
 	if(spifi_reg.fifoctrl & FIFOC_FLUSH) { LOG("fifoctrl.FLUSH: unimplemented"); } // flush FIFO
 	if(spifi_reg.fifoctrl & FIFOC_LOAD) { LOG("fifoctrl.LOAD: unimplemented"); } // Load FIFO synchronously
+}
+
+void spifi3_device::select_w(uint32_t data)
+{
+	LOG("write spifi_reg.select = 0x%x\n", data);
+	spifi_reg.select = data;
+
+	if(spifi_reg.select & SEL_ISTART)
+	{
+		LOG("SPIFI command start requested, but is unimplemented!\n");
+		// TODO: start command here
+	}
+}
+
+void spifi3_device::autodata_w(uint32_t data)
+{
+	LOG("write spifi_reg.autodata = 0x%x\n", data);
+	spifi_reg.autodata = data;
+
+	if(spifi_reg.autodata & ADATA_EN)
+	{
+		LOG("autodata enabled! target %d direction %s\n", spifi_reg.autodata & ADATA_TARGET_ID, spifi_reg.autodata & ADATA_IN ? "in" : "out");
+	}
 }
 
 void spifi3_device::check_irq()

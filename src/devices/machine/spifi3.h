@@ -1,6 +1,6 @@
 // license:BSD-3-Clause
-// copyright-holders:Brice Onken,Tsubai Masanari
-// thanks-to:Patrick Mackinlay,Olivier Galibert
+// copyright-holders:Brice Onken,Tsubai Masanari,Olivier Galibert
+// thanks-to:Patrick Mackinlay
 
 /*
  * HP 1TV3-0302 SPIFI3-SE SCSI controller
@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <queue>
 #include "machine/nscsi_bus.h"
 
 class spifi3_device
@@ -192,7 +193,10 @@ private:
 	void auxctrl_w(uint32_t data);
 
 	// FIFOCTRL constants and functions
-	const uint32_t FIFOC_FSLOT = 0x0f; // Free slots in FIFO - max 8. Free slots = 8 - (FIFOCTRL & FIFOC_FSLOT) */
+	// Based on the existence of CLREVEN/ODD, the fact that NetBSD only uses EVEN, and the max is 8
+	// even though this is a 4 bit value, it seems likely that there are actually two FIFOs,
+	// one in the even slots, and one in the odd slots
+	const uint32_t FIFOC_FSLOT = 0x0f; // Free slots in FIFO - max 8. Free slots = 8 - (FIFOCTRL & FIFOC_FSLOT)
 	const uint32_t FIFOC_SSTKACT = 0x10;
 	const uint32_t FIFOC_RQOVRN = 0x20;
 	const uint32_t FIFOC_CLREVEN = 0x00;
@@ -201,6 +205,29 @@ private:
 	const uint32_t FIFOC_LOAD = 0xc0;
 	uint32_t fifoctrl_r();
 	void fifoctrl_w(uint32_t data);
+	std::queue<uint32_t> m_even_fifo; // 0, 2, 4, 6, 8, 10, 12, 14
+	std::queue<uint32_t> m_odd_fifo;  // 1, 3, 5, 7, 9, 11, 13, 15
+
+	// Config register
+	const uint32_t CONFIG_INITIATOR_ID = 0x7;
+	const uint32_t CONFIG_PGENEN = 0x08;
+	const uint32_t CONFIG_PCHKEN = 0x10;
+	const uint32_t CONFIG_WORDEN = 0x20;
+	const uint32_t CONFIG_AUTOID = 0x40;
+	const uint32_t CONFIG_DMABURST = 0x80;
+
+	// Select register
+	const uint32_t SEL_SETATN	= 0x02;
+	const uint32_t SEL_IRESELEN	= 0x04;
+	const uint32_t SEL_ISTART	= 0x08;
+	const uint32_t SEL_WATN	    = 0x80;
+	void select_w(uint32_t data);
+
+	// Autodata register
+	const uint32_t ADATA_IN	= 0x40;
+	const uint32_t ADATA_EN	= 0x80;
+	const uint32_t ADATA_TARGET_ID = 0x07;
+	void autodata_w(uint32_t data);
 
 	// Command buffer constants and functions
 	uint8_t cmd_buf_r(offs_t offset);
