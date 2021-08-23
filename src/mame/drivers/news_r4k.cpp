@@ -57,7 +57,7 @@
  *   - National Semi PC8477B Floppy Controller: emulated (uses the -A version currently, but it seems to work)
  *   - Zilog Z8523010VSC ESCC serial interface: emulated (see following)
  *   - Sony CXD8421Q WSC-ESCC1 serial APbus interface controller: skeleton (ESCC connections, probably DMA, APbus interface, etc. handled by this chip)
- *   - 2x Sony CXD8442Q WSC-FIFO APbus FIFO/interface chips: partially emulated (handles APbus connections and probably DMA for sound, floppy, etc.)
+ *   - 2x Sony CXD8442Q WSC-FIFO APbus FIFO/interface chips: partially emulated (handles APbus connections and DMA for sound, floppy, etc.)
  *   - National Semi DP83932B-VF SONIC Ethernet controller: Not fully working yet (also, is using -C rather than -B version)
  *   - Sony CXD8452AQ WSC-SONIC3 SONIC Ethernet APbus interface controller: partially emulated
  *   - Sony CXD8418Q WSC-PARK3: not fully emulated, but some of the general platform functions may come from this chip (most likely a gate array based on what the PARK2 was in older gen NEWS systems)
@@ -876,13 +876,13 @@ void news_r4k_state::int_check()
     // This has been tested with a few different devices and seems OK so far, but there might be some things missing.
     for (int i = 0; i < 6; i++)
     {
-        int state = m_intst[i] & m_inten[i];
+        bool state = (m_intst[i] & m_inten[i]) > 0;
         //LOG("int_check: INTST%d current value: %d INTEN%d current value: %d -> computed state = %d\n", i, m_intst[i], i, m_inten[i], state);
-        if (m_int_state[i] != (state > 0)) // Interrupt changed state
+        if (m_int_state[i] != state) // Interrupt changed state
         {
             //LOG("Setting CPU input line %d to %d\n", interrupt_map[i], state > 0 ? 1 : 0);
-            m_int_state[i] = state > 0;
-            m_cpu->set_input_line(interrupt_map[i], state > 0 ? 1 : 0);
+            m_int_state[i] = state;
+            m_cpu->set_input_line(interrupt_map[i], state ? 1 : 0);
         }
     }
 }
