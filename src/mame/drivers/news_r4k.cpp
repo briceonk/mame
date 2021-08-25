@@ -1,6 +1,6 @@
 // license:BSD-3-Clause
 // copyright-holders:Brice Onken
-// thanks-to:Patrick Mackinlay
+// thanks-to:Patrick Mackinlay,Olivier Galibert,Tsubai Masanari
 
 /*
  * Sony NEWS R4000/4400 APbus workstations.
@@ -955,7 +955,7 @@ ROM_REGION64_BE(0x400, "idrom", 0)
 ROM_LOAD("idrom.rom", 0x000, 0x400, CRC(28ff30c9) SHA1(288fd7d9133ac5e40d90a9b6e24db057cd6b05ad) BAD_DUMP)
 
 ROM_REGION64_BE(0x400, "macrom", 0)
-ROM_LOAD("macrom.rom", 0x000, 0x400, CRC(c3c9f79c) SHA1(a430787b77604d72eb99773817e2405ba414d306) BAD_DUMP)
+ROM_LOAD("macrom.rom", 0x000, 0x400, CRC(22d384d2) SHA1(b78a2861310929e92f16deab989ac51f9da3131a) BAD_DUMP)
 ROM_END
 
 // Machine definitions

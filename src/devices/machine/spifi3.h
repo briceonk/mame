@@ -10,10 +10,12 @@
  * Based on internet research, it seems some HP PA-RISC systems also used the SPIFI3, including the E55.
  *
  * Register definitions were derived from the NetBSD source code, copyright (c) 2000 Tsubai Masanari.
+ * SCSI state machine code was derived from the MAME NCR5390 driver, copyright (c) Olivier Galibert
  *
  * References:
  * - https://github.com/NetBSD/src/blob/trunk/sys/arch/newsmips/apbus/spifireg.h
  * - https://github.com/NetBSD/src/blob/trunk/sys/arch/newsmips/apbus/spifi.c
+ * - https://github.com/mamedev/mame/blob/master/src/devices/machine/ncr5390.cpp
  */
 
 #ifndef MAME_MACHINE_SPIFI3_H
@@ -32,22 +34,36 @@ public:
 	spifi3_device(machine_config const &mconfig, char const *tag, device_t *owner, u32 clock);
 	void map(address_map &map);
 
+protected:
+	virtual void device_start() override;
+
 private:
 
 	enum ScsiMode
 	{ 
-		MODE_D, 
-		MODE_T, 
-		MODE_I 
+		MODE_D, // Disconnected
+		MODE_T,  // Target
+		MODE_I  // Initiator
 	};
 
     // State tracking variables
 	ScsiMode mode; // Target or initiatior?
 	int state; // SCSI controller state
+	int xfr_phase;
+	int command_length;
+	int dma_dir;
+	bool irq; // IRQ pin state
+	bool drq; // DRQ pin state
+	bool dma_command;
+
+	// I/O ports
+	devcb_write_line m_irq_handler;
+	devcb_write_line m_drq_handler;
 
 	enum { IDLE };
 
-	enum {
+	enum
+	{
 		// Bus initiated sequences
 		BUSINIT_SETTLE_DELAY = 1,
 		BUSINIT_ASSERT_BUS_SEL,
@@ -104,7 +120,8 @@ private:
 		INIT_CPT_RECV_BYTE_NACK
 	};
 
-	enum {
+	enum
+	{
 		// Arbitration
 		ARB_WAIT_BUS_FREE = 1,
 		ARB_COMPLETE,
@@ -123,7 +140,8 @@ private:
 		RECV_WAIT_REQ_0
 	};
 
-	enum {
+	enum
+	{
 		STATE_MASK = 0x00ff,
 		SUB_SHIFT  = 8,
 		SUB_MASK   = 0xff00
@@ -131,7 +149,8 @@ private:
 
 	enum { BUS_BUSY, BUS_FREE_WAIT, BUS_FREE };
 
-	enum {
+	enum
+	{
 		S_GROSS_ERROR     = 0x40,
 		S_PARITY          = 0x20,
 		S_TC0             = 0x10,
@@ -182,7 +201,15 @@ private:
 	// State-related functions
 	void step(bool timeout);
 	void check_irq();
+	void check_drq();
 	void reset_disconnect();
+	void send_byte();
+	void recv_byte();
+	void function_complete();
+	void function_bus_complete();
+	void bus_complete();
+	void dma_set(int dir);
+	void decrement_tcounter(int count = 1);
 
 	// AUXCTRL constants and functions
 	const uint32_t AUXCTRL_DMAEDGE = 0x04;
@@ -208,6 +235,49 @@ private:
 	std::queue<uint32_t> m_even_fifo; // 0, 2, 4, 6, 8, 10, 12, 14
 	std::queue<uint32_t> m_odd_fifo;  // 1, 3, 5, 7, 9, 11, 13, 15
 
+	// spstat
+	const uint32_t SPS_IDLE		= 0x00;
+	const uint32_t SPS_SEL		= 0x01;
+	const uint32_t SPS_ARB		= 0x02;
+	const uint32_t SPS_RESEL	= 0x03;
+	const uint32_t SPS_MSGOUT	= 0x04;
+	const uint32_t SPS_COMMAND	= 0x05;
+	const uint32_t SPS_DISCON	= 0x06;
+	const uint32_t SPS_NXIN		= 0x07;
+	const uint32_t SPS_INTR		= 0x08;
+	const uint32_t SPS_NXOUT	= 0x09;
+	const uint32_t SPS_CCOMP	= 0x0a;
+	const uint32_t SPS_SVPTR	= 0x0b;
+	const uint32_t SPS_STATUS	= 0x0c;
+	const uint32_t SPS_MSGIN	= 0x0d;
+	const uint32_t SPS_DATAOUT	= 0x0e;
+	const uint32_t SPS_DATAIN	= 0x0f;
+
+	// Interrupt status register
+	const uint32_t INTR_BSRQ	 = 0x01;
+	const uint32_t INTR_COMRECV  = 0x02;
+	const uint32_t INTR_PERR	 = 0x04;
+	const uint32_t INTR_TIMEO	 = 0x08;
+	const uint32_t INTR_DERR	 = 0x10;
+	const uint32_t INTR_TGSEL	 = 0x20;
+	const uint32_t INTR_DISCON	 = 0x40;
+	const uint32_t INTR_FCOMP	 = 0x80;
+
+	// Interrupt condition register
+	const uint32_t ICOND_ADATAOFF	= 0x02;
+	const uint32_t ICOND_AMSGOFF	= 0x06;
+	const uint32_t ICOND_ACMDOFF	= 0x0a;
+	const uint32_t ICOND_ASTATOFF	= 0x0e;
+	const uint32_t ICOND_SVPTEXP	= 0x10;
+	const uint32_t ICOND_ADATAMIS	= 0x20;
+	const uint32_t ICOND_CNTZERO	= 0x40;
+	const uint32_t ICOND_UXPHASEZ	= 0x80;
+	const uint32_t ICOND_UXPHASENZ	= 0x81;
+	const uint32_t ICOND_NXTREQ = 0xa0;
+	const uint32_t ICOND_UKMSGZ = 0xc0;
+	const uint32_t ICOND_UKMSGNZ = 0xc1;
+	const uint32_t ICOND_UBF = 0xe0; /* Unexpected bus free */
+
 	// Config register
 	const uint32_t CONFIG_INITIATOR_ID = 0x7;
 	const uint32_t CONFIG_PGENEN = 0x08;
@@ -217,21 +287,26 @@ private:
 	const uint32_t CONFIG_DMABURST = 0x80;
 
 	// Select register
-	const uint32_t SEL_SETATN	= 0x02;
-	const uint32_t SEL_IRESELEN	= 0x04;
-	const uint32_t SEL_ISTART	= 0x08;
-	const uint32_t SEL_WATN	    = 0x80;
+	const uint32_t SEL_SETATN = 0x02;	// Set ATN??? NetBSD doesn't use this...
+	const uint32_t SEL_IRESELEN = 0x04; // Enable reselection phase
+	const uint32_t SEL_ISTART = 0x08;	// Start selection
+	const uint32_t SEL_WATN = 0x80;		// ???????
 	void select_w(uint32_t data);
 
 	// Autodata register
-	const uint32_t ADATA_IN	= 0x40;
-	const uint32_t ADATA_EN	= 0x80;
+	const uint32_t ADATA_IN = 0x40;
+	const uint32_t ADATA_EN = 0x80;
 	const uint32_t ADATA_TARGET_ID = 0x07;
 	void autodata_w(uint32_t data);
 
 	// Command buffer constants and functions
 	uint8_t cmd_buf_r(offs_t offset);
 	void cmd_buf_w(offs_t offset, uint8_t data);
+
+	// cmlen
+	const uint32_t CML_LENMASK = 0x0f;
+	const uint32_t CML_AMSG_EN = 0x40;
+	const uint32_t CML_ACOM_EN = 0x80;
 
 	struct spifi_cmd_entry
 	{
@@ -284,7 +359,7 @@ private:
 		uint32_t identify = 0;
 
 /*70*/  uint32_t complete = 0;
-		uint32_t scsi_status = 0x1; // MROM reads this to check if the SPIFI is alive at system boot, so the WO description from NetBSD might be wrong.
+		uint32_t scsi_status = 0x0; // MROM reads this to check if the SPIFI is alive at system boot, so the WO description from NetBSD might be wrong.
 		uint32_t data = 0;
 		uint32_t icond = 0;
 
