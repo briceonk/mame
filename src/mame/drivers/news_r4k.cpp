@@ -386,7 +386,12 @@ void news_r4k_state::machine_common(machine_config &config)
 
     // Connect SPIFI3s to the buses
     // TODO: Actual clock and SCSI config (see news_r3k for what this might look like in the future)
-    NSCSI_CONNECTOR(config, "scsi0:7").option_set("spifi3", SPIFI3).clock(16'000'000).machine_config([this](device_t *device) {});
+    NSCSI_CONNECTOR(config, "scsi0:7").option_set("spifi3", SPIFI3).clock(16'000'000).machine_config([this](device_t *device)
+                                                                                                     {
+                                                                                                         spifi3_device &adapter = downcast<spifi3_device &>(*device);
+                                                                                                         adapter.irq_handler_cb().set(*this, FUNC(news_r4k_state::irq_w<irq0_number::DMAC>));
+                                                                                                         adapter.set_clock(16'000'000);
+                                                                                                     });
     NSCSI_CONNECTOR(config, "scsi1:7").option_set("spifi3", SPIFI3).clock(16'000'000).machine_config([this](device_t *device) {});
 }
 
@@ -735,7 +740,7 @@ uint8_t news_r4k_state::apbus_cmd_r(offs_t offset)
         value = 0x32;
     }
 
-    LOG("APBus read triggered at offset 0x%x, returning 0x%x\n", offset, value);
+    // LOG("APBus read triggered at offset 0x%x, returning 0x%x\n", offset, value);
     return value;
 }
 
@@ -758,7 +763,7 @@ void news_r4k_state::apbus_cmd_w(offs_t offset, uint32_t data)
     // map(0x14c20000, 0x14c40000); // APBUS_DMAMAP - DMA mapping RAM
     if(data != 0x424f4d42) // mask out reset noise
     {
-        LOG("APbus command called, offset 0x%x, set to 0x%x\n", offset, data);
+        // LOG("APbus command called, offset 0x%x, set to 0x%x\n", offset, data);
     }
 }
 
@@ -877,10 +882,10 @@ void news_r4k_state::int_check()
     for (int i = 0; i < 6; i++)
     {
         bool state = (m_intst[i] & m_inten[i]) > 0;
-        //LOG("int_check: INTST%d current value: %d INTEN%d current value: %d -> computed state = %d\n", i, m_intst[i], i, m_inten[i], state);
+        // LOG("int_check: INTST%d current value: %d INTEN%d current value: %d -> computed state = %d\n", i, m_intst[i], i, m_inten[i], state);
         if (m_int_state[i] != state) // Interrupt changed state
         {
-            //LOG("Setting CPU input line %d to %d\n", interrupt_map[i], state > 0 ? 1 : 0);
+            // LOG("Setting CPU input line %d to %d\n", interrupt_map[i], state > 0 ? 1 : 0);
             m_int_state[i] = state;
             m_cpu->set_input_line(interrupt_map[i], state ? 1 : 0);
         }

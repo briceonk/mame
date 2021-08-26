@@ -34,8 +34,12 @@ public:
 	spifi3_device(machine_config const &mconfig, char const *tag, device_t *owner, u32 clock);
 	void map(address_map &map);
 
+	auto irq_handler_cb() { return m_irq_handler.bind(); }
+	auto drq_handler_cb() { return m_drq_handler.bind(); }
+
 protected:
 	virtual void device_start() override;
+	virtual void device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) override;
 
 private:
 
@@ -51,10 +55,15 @@ private:
 	int state; // SCSI controller state
 	int xfr_phase;
 	int command_length;
+	int command_pos;
 	int dma_dir;
 	bool irq; // IRQ pin state
 	bool drq; // DRQ pin state
 	bool dma_command;
+	uint32_t tcounter;
+	uint8_t sync_period, clock_conv; // TODO: spifi equivalents
+	emu_timer *tm;
+	int bus_id;
 
 	// I/O ports
 	devcb_write_line m_irq_handler;
@@ -210,6 +219,10 @@ private:
 	void bus_complete();
 	void dma_set(int dir);
 	void decrement_tcounter(int count = 1);
+	bool transfer_count_zero();
+	void delay(int cycles);
+	void delay_cycles(int cycles);
+	void arbitrate();
 
 	// AUXCTRL constants and functions
 	const uint32_t AUXCTRL_DMAEDGE = 0x04;
@@ -291,6 +304,7 @@ private:
 	const uint32_t SEL_IRESELEN = 0x04; // Enable reselection phase
 	const uint32_t SEL_ISTART = 0x08;	// Start selection
 	const uint32_t SEL_WATN = 0x80;		// ???????
+	const uint32_t SEL_TARGET = 0x70;
 	void select_w(uint32_t data);
 
 	// Autodata register
@@ -298,6 +312,18 @@ private:
 	const uint32_t ADATA_EN = 0x80;
 	const uint32_t ADATA_TARGET_ID = 0x07;
 	void autodata_w(uint32_t data);
+
+	// prcmd
+	const uint32_t PRC_DATAOUT	=0;
+	const uint32_t PRC_DATAIN	=1;
+	const uint32_t PRC_COMMAND	=2;
+	const uint32_t PRC_STATUS	=3;
+	const uint32_t PRC_TRPAD	=4;
+	const uint32_t PRC_MSGOUT	=6;
+	const uint32_t PRC_MSGIN	=7;
+	const uint32_t PRC_KILLREQ	=0x08;
+	const uint32_t PRC_CLRACK	=0x10;
+	const uint32_t PRC_NJMP     =0x80;
 
 	// Command buffer constants and functions
 	uint8_t cmd_buf_r(offs_t offset);
@@ -326,10 +352,10 @@ private:
 /*00*/	uint32_t spstat = 0;
 		uint32_t cmlen = 0;
 		uint32_t cmdpage = 0;
-		uint32_t count_hi = 0;
+		// uint32_t count_hi = 0;
 
-/*10*/	uint32_t count_mid = 0;
-		uint32_t count_low = 0;
+/*10*/	// uint32_t count_mid = 0;
+		// uint32_t count_low = 0;
 		uint32_t svptr_hi = 0;
 		uint32_t svptr_mid = 0;
 
@@ -359,7 +385,7 @@ private:
 		uint32_t identify = 0;
 
 /*70*/  uint32_t complete = 0;
-		uint32_t scsi_status = 0x0; // MROM reads this to check if the SPIFI is alive at system boot, so the WO description from NetBSD might be wrong.
+		uint32_t scsi_status = 0x1; // MROM reads this to check if the SPIFI is alive at system boot, so the WO description from NetBSD might be wrong.
 		uint32_t data = 0;
 		uint32_t icond = 0;
 
