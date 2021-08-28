@@ -9,6 +9,11 @@
  * found is the Sony NEWS APBus NetBSD driver. Hopefully a datasheet will turn up eventually.
  * Based on internet research, it seems some HP PA-RISC systems also used the SPIFI3, including the E55.
  *
+ * Because this driver was developed to work with NetBSD, NEWS-OS, and the NWS-5000 monitor ROM, only
+ * the features and flows that Sony used are implemented. Emulating non-Sony designs using this chip will likely 
+ * require similar RE work to determine the exact SPIFI features used and support for them added into this driver.  
+ * In its current state, this driver is unlikely to work out of the box with any other machines.
+ *
  * Register definitions were derived from the NetBSD source code, copyright (c) 2000 Tsubai Masanari.
  * SCSI state machine code was derived from the MAME NCR5390 driver, copyright (c) Olivier Galibert
  *

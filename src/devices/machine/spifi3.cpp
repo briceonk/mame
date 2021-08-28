@@ -585,8 +585,8 @@ void spifi3_device::send_cmd_byte()
 		{
 			fatalerror("Tried to send command past the end of cdb! Command_pos: %d", command_pos);
 		}
-		scsi_bus->data_w(scsi_refid, spifi_reg.cmbuf[scsi_refid].cdb[command_pos++]);
-		m_even_fifo.pop();
+		LOG("Sending byte from cmbuf[%d].cdb[%d] = 0x%x\n", scsi_id, command_pos, spifi_reg.cmbuf[scsi_id].cdb[command_pos]);
+		scsi_bus->data_w(scsi_refid, spifi_reg.cmbuf[scsi_id].cdb[command_pos++]);
 	}
 	else
 	{
@@ -594,9 +594,9 @@ void spifi3_device::send_cmd_byte()
 		scsi_bus->data_w(scsi_refid, 0);
 	}
 
-	scsi_bus->ctrl_w(scsi_refid, S_ACK, S_ACK);
-	scsi_bus->ctrl_wait(scsi_refid, S_REQ, S_REQ);
-	delay_cycles(sync_period);
+	scsi_bus->ctrl_w(scsi_refid, S_ACK, S_ACK); // Send ACK
+	scsi_bus->ctrl_wait(scsi_refid, S_REQ, S_REQ); // Wait for REQ
+	delay_cycles(sync_period); // Delay till next cycle
 }
 
 void spifi3_device::send_byte()
@@ -610,7 +610,7 @@ void spifi3_device::send_byte()
 
 	if((state & STATE_MASK) != INIT_XFR_SEND_PAD && ((state & STATE_MASK) != DISC_SEL_SEND_BYTE || command_length))
 	{
-		// Send next data from FIFO. TODO: send command stuff from cdb register instead
+		// Send next data from FIFO.
 		scsi_bus->data_w(scsi_refid, m_even_fifo.front());
 		m_even_fifo.pop();
 	}
@@ -914,8 +914,7 @@ void spifi3_device::step(bool timeout)
 				state = IDLE;
 				//spifi_reg.spstat = SPS_DISCON << 4; // Set disconnected flag since we don't have a connection. Bit shift to match NetBSD, but that needs to be tested/investigated
 				spifi_reg.intr = INTR_TIMEO; // signal timeout
-				//spifi_reg.intr = 0xff;
-				// TODO: Set Z state flag? Any interrupts needed? Timeout, maybe?
+				// TODO: Set Z state flag?
 				reset_disconnect();
 				check_irq();
 			}
@@ -989,16 +988,27 @@ void spifi3_device::step(bool timeout)
 
 		case DISC_SEL_ARBITRATION_INIT: // Arbitration and selection complete, time to execute the queued command
 		{
-			// Wait for command to be provided
-			if (((spifi_reg.prcmd & PRC_NJMP) || !(spifi_reg.prcmd & PRC_COMMAND)) && !(spifi_reg.cmlen | CML_ACOM_EN)) // Don't break if autocmd is enabled 
+			// Wait for a command, or if autoidentify was enabled, just do it
+			// This is reverse engineered from what the NWS-5000 MROM does - NetBSD doesn't use this at all
+			// so this may not be fully accurate.
+			if (((spifi_reg.prcmd & PRC_NJMP) || !(spifi_reg.prcmd & PRC_COMMAND)) && !(spifi_reg.identify & 0x80)) // had && !(spifi_reg.cmlen | CML_ACOM_EN) here, but it needs to move
 			{
 				// dma starts after bus arbitration/selection is complete
 				check_drq();
 				break;
 			}
 
-			command_length = spifi_reg.cmlen & CML_LENMASK; // TODO: do the upper bytes actually matter (as in, does the NWS series actually use anything else?)
-			command_pos = 0;
+			// Extract the command length from the cmlen register and reset our index into the command buffer if a command was given
+			if(!(spifi_reg.prcmd & PRC_NJMP) && (spifi_reg.prcmd & PRC_COMMAND))
+			{
+				command_length = spifi_reg.cmlen & CML_LENMASK;
+				command_pos = 0;
+			}
+			// Otherwise, we are here because the host enabled autoidentify, so CDB isn't the source of the command. Instead, we'll send identify
+			else
+			{
+				command_pos = -1; // XXX THIS IS TEMPORARY
+			}
 			state = DISC_SEL_ARBITRATION;
 			step(false);
 			break;
@@ -1023,30 +1033,58 @@ void spifi3_device::step(bool timeout)
 			break;
 		}
 
-		case DISC_SEL_ATN_WAIT_REQ: // REQ asserted, either get ready to send a byte, or complete the command.
+		case DISC_SEL_ATN_WAIT_REQ: // REQ asserted, either get read to send a byte, or complete the command.
 		{
-			if(!(ctrl & S_REQ))
+			if(!(ctrl & S_REQ)) // Wait for REQ
 			{
 				break;
 			}
-			if((ctrl & S_PHASE_MASK) != S_PHASE_MSG_OUT)
+			if((ctrl & S_PHASE_MASK) != S_PHASE_MSG_OUT) // No longer in MSG_OUT, we're done
 			{
 				function_complete();
 				break;
 			}
-			if(spifi_reg.select | SEL_WATN) // c == CD_SELECT_ATN) ??? Does this also use the SEL ATN stuff?
+			if(spifi_reg.select | SEL_WATN) // c == CD_SELECT_ATN) Deassert ATN now if we asserted it before
 			{
 				scsi_bus->ctrl_w(scsi_refid, 0, S_ATN);
 			}
 			state = DISC_SEL_ATN_SEND_BYTE;
-			send_cmd_byte();
+			if(command_pos >= 0)
+			{
+				send_cmd_byte(); // Send the next CDB byte
+			}
+			else // autoidentify
+			{
+				// TODO: refactor me
+				scsi_bus->data_w(scsi_refid, 0x80); // TODO: calc DiscPriv and LUNTAR from register
+				scsi_bus->ctrl_w(scsi_refid, S_ACK, S_ACK); // Send ACK
+				scsi_bus->ctrl_wait(scsi_refid, S_REQ, S_REQ); // Wait for REQ
+				delay_cycles(sync_period); // Delay till next cycle
+			}
 			break;
 		}
 
 		case DISC_SEL_ATN_SEND_BYTE:
 		{
 			command_length--;
-			if(true) //c == CD_SELECT_ATN_STOP) // How to determine if this is the right thing to do? Seems like it for NetBSD at least.
+			if (command_pos < 0)
+			{
+				// XXX RE ALERT - MIGHT BE WAY OFF
+				// autoidentified target, now we need to see if autocmd is enabled. If so, we can just proceed to the XFR phase automatically.
+				command_pos = 0;
+				if(spifi_reg.cmlen | CML_ACOM_EN)
+				{
+					state = INIT_XFR;
+					xfr_phase = scsi_bus->ctrl_r() & S_PHASE_MASK; // XXX is this OK??
+					check_drq(); // XXX needed?
+					step(false); // XXX delay needed?
+				}
+				else
+				{
+					function_bus_complete();
+				}
+			}
+			else if(true) //c == CD_SELECT_ATN_STOP) // How to determine if this is the right thing to do? Seems like it for NetBSD at least. With autocmd/autoidentify, this probably waits until command length is 0.
 			{
 				function_bus_complete();
 			} 
@@ -1126,7 +1164,8 @@ void spifi3_device::step(bool timeout)
 
 		case INIT_XFR:
 		{
-			switch(xfr_phase) 
+			LOG("INIT_XFR: %d\n", xfr_phase);
+			switch (xfr_phase)
 			{
 				case S_PHASE_DATA_OUT:
 				case S_PHASE_COMMAND:
@@ -1134,8 +1173,8 @@ void spifi3_device::step(bool timeout)
 				{
 					state = INIT_XFR_SEND_BYTE;
 
-					// can't send if the fifo is empty
-					if (m_even_fifo.empty())
+					// can't send if the fifo is empty and we are sending data
+					if (m_even_fifo.empty() && xfr_phase == S_PHASE_DATA_OUT)
 					{
 						break;
 					}
@@ -1146,12 +1185,19 @@ void spifi3_device::step(bool timeout)
 						scsi_bus->ctrl_w(scsi_refid, 0, S_ATN);
 					}
 
-					send_byte();
+					if(xfr_phase == S_PHASE_DATA_OUT)
+					{
+						send_byte();
+					}
+					else // send from cdb buffer
+					{
+						send_cmd_byte();
+					}
 					break;
 				}
 
 				case S_PHASE_DATA_IN:
-				case S_PHASE_STATUS:
+				case S_PHASE_STATUS: // TODO: autostatus
 				case S_PHASE_MSG_IN:
 				{
 					// can't receive if the fifo is full
@@ -1184,7 +1230,7 @@ void spifi3_device::step(bool timeout)
 				break;
 			}
 
-			// check for command complete
+			// check for command complete -- TODO need to change how this works
 			if ((dma_command && transfer_count_zero() && (dma_dir == DMA_IN || m_even_fifo.empty())) // dma in/out: transfer count == 0
 			|| (!dma_command && (xfr_phase & S_INP) == 0 && m_even_fifo.empty()) // non-dma out: fifo empty
 			|| (!dma_command && (xfr_phase & S_INP) == S_INP && m_even_fifo.size() == 1)) // non-dma in: every byte
