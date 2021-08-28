@@ -61,7 +61,7 @@ private:
 	bool drq; // DRQ pin state
 	bool dma_command;
 	uint32_t tcounter;
-	uint8_t sync_period, clock_conv; // TODO: spifi equivalents
+	uint8_t sync_period, clock_conv = 2; // TODO: spifi equivalents
 	emu_timer *tm;
 	int bus_id;
 
@@ -213,6 +213,7 @@ private:
 	void check_drq();
 	void reset_disconnect();
 	void send_byte();
+	void send_cmd_byte();
 	void recv_byte();
 	void function_complete();
 	void function_bus_complete();
@@ -265,6 +266,14 @@ private:
 	const uint32_t SPS_MSGIN	= 0x0d;
 	const uint32_t SPS_DATAOUT	= 0x0e;
 	const uint32_t SPS_DATAIN	= 0x0f;
+
+	// prstat
+	#define PRS_IO		0x08
+#define PRS_CD		0x10
+#define PRS_MSG		0x20
+#define PRS_ATN		0x40
+#define PRS_Z		0x80
+#define PRS_PHASE	(PRS_MSG | PRS_CD | PRS_IO)
 
 	// Interrupt status register
 	const uint32_t INTR_BSRQ	 = 0x01;

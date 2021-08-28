@@ -360,7 +360,7 @@ void news_r4k_state::machine_common(machine_config &config)
     // DMA controller
     // TODO: interrupts, join bus, etc.
     DMAC3(config, m_dmac, 0);
-    // m_dmac->irq_out().set(FUNC(news_r4k_state::irq_w<DMAC>));
+    m_dmac->irq_out().set(FUNC(news_r4k_state::irq_w<DMAC>));
 
     // Create SCSI buses
     NSCSI_BUS(config, m_scsibus0);
@@ -389,8 +389,7 @@ void news_r4k_state::machine_common(machine_config &config)
     NSCSI_CONNECTOR(config, "scsi0:7").option_set("spifi3", SPIFI3).clock(16'000'000).machine_config([this](device_t *device)
                                                                                                      {
                                                                                                          spifi3_device &adapter = downcast<spifi3_device &>(*device);
-                                                                                                         adapter.irq_handler_cb().set(*this, FUNC(news_r4k_state::irq_w<irq0_number::DMAC>));
-                                                                                                         adapter.set_clock(16'000'000);
+                                                                                                         adapter.irq_handler_cb().set(m_dmac, FUNC(dmac3_device::irq_w<dmac3_device::CTRL0>));
                                                                                                      });
     NSCSI_CONNECTOR(config, "scsi1:7").option_set("spifi3", SPIFI3).clock(16'000'000).machine_config([this](device_t *device) {});
 }

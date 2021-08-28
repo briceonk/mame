@@ -65,7 +65,7 @@ void spifi3_device::device_start()
 	// select_timeout = 0;
 
 	bus_id = 0;
-	tm = timer_alloc(0);
+	tm = timer_alloc(100);
 }
 
 void spifi3_device::map(address_map &map)
@@ -78,7 +78,7 @@ void spifi3_device::map(address_map &map)
 								   {
 									   intrOccurred = true;
 								   }
-								   uint32_t spstat = (intrOccurred ? (SPS_INTR | SPS_INTR << 4) : spifi_reg.spstat << 4); /*XXX ???*/
+								   uint32_t spstat = (intrOccurred ? (spifi_reg.spstat << 4 | SPS_INTR) : spifi_reg.spstat << 4); /*XXX ???*/
 								   LOG("read spifi_reg.spstat = 0x%x\n", spstat);
 								   return spstat;
 							   }),
@@ -96,7 +96,16 @@ void spifi3_device::map(address_map &map)
 	map(0x20, 0x23).lrw32(NAME([this]() { LOG("read spifi_reg.svptr_low = 0x%x\n", spifi_reg.svptr_low); return spifi_reg.svptr_low; }), NAME([this](uint32_t data) { LOG("write spifi_reg.svptr_low = 0x%x\n", data); spifi_reg.svptr_low = data; }));
 	map(0x28, 0x2b).lrw32(NAME([this]() { LOG("read spifi_reg.imask = 0x%x\n", spifi_reg.imask); return spifi_reg.imask; }), NAME([this](uint32_t data) { LOG("write spifi_reg.imask = 0x%x\n", data); spifi_reg.imask = data; }));
 	map(0x2c, 0x2f).lrw32(NAME([this]() { LOG("read spifi_reg.prctrl = 0x%x\n", spifi_reg.prctrl); return spifi_reg.prctrl; }), NAME([this](uint32_t data) { LOG("write spifi_reg.prctrl = 0x%x\n", data); spifi_reg.prctrl = data; }));
-	map(0x30, 0x33).lrw32(NAME([this]() { LOG("read spifi_reg.prstat = 0x%x\n", spifi_reg.prstat); return spifi_reg.prstat; }), NAME([this](uint32_t data) { LOG("write spifi_reg.prstat = 0x%x\n", data); spifi_reg.prstat = data; }));
+	map(0x30, 0x33).lrw32(NAME([this]()
+							   {
+								   LOG("read spifi_reg.prstat = 0x%x\n", spifi_reg.prstat | PRS_Z);
+								   return spifi_reg.prstat | PRS_Z;
+							   }),
+						  NAME([this](uint32_t data)
+							   {
+								   LOG("write spifi_reg.prstat = 0x%x\n", data);
+								   spifi_reg.prstat = data;
+							   }));
 	map(0x3c, 0x3f).lrw32(NAME([this]() { LOG("read spifi_reg.fifodata = 0x%x\n", spifi_reg.fifodata); return spifi_reg.fifodata; }), NAME([this](uint32_t data) { LOG("write spifi_reg.fifodata = 0x%x\n", data); spifi_reg.fifodata = data; }));
 	map(0x44, 0x47).lrw32(NAME([this]() { LOG("read spifi_reg.data_xfer = 0x%x\n", spifi_reg.data_xfer); return spifi_reg.data_xfer; }), NAME([this](uint32_t data) { LOG("write spifi_reg.data_xfer = 0x%x\n", data); spifi_reg.data_xfer = data; }));
 	map(0x48, 0x4b).lrw32(NAME([this]() { LOG("read spifi_reg.autocmd = 0x%x\n", spifi_reg.autocmd); return spifi_reg.autocmd; }), NAME([this](uint32_t data) { LOG("write spifi_reg.autocmd = 0x%x\n", data); spifi_reg.autocmd = data; }));
@@ -192,7 +201,9 @@ void spifi3_device::map(address_map &map)
 	map(0x38, 0x3b).rw(FUNC(spifi3_device::fifoctrl_r), FUNC(spifi3_device::fifoctrl_w));
 	map(0x40, 0x43).lrw32(NAME([this]() { LOG("read spifi_reg.config = 0x%x\n", spifi_reg.config); return spifi_reg.config; }), NAME([this](uint32_t data) { LOG("write spifi_reg.config = 0x%x\n", data); spifi_reg.config = data; }));
 	map(0x54, 0x57).w(FUNC(spifi3_device::select_w));
-	map(0x54, 0x57).lr32(NAME([this]() { LOG("read spifi_reg.select = 0x%x\n", spifi_reg.select); return spifi_reg.select; }));
+	map(0x54, 0x57).lr32(NAME([this]() { LOG("read spifi_reg.select = 0x%x\n", spifi_reg.select);
+		select_w(spifi_reg.select | SEL_ISTART);
+		 return spifi_reg.select; })); // XXX mrom expects selection retries to happen automatically, but it does read the register - does this trigger a reselection attempt?
 	map(0x5c, 0x5f).rw(FUNC(spifi3_device::auxctrl_r), FUNC(spifi3_device::auxctrl_w));
 	map(0x60, 0x63).w(FUNC(spifi3_device::autodata_w));
 	map(0x60, 0x63).lr32(NAME([this]() { LOG("read spifi_reg.autodata = 0x%x\n", spifi_reg.autodata); return spifi_reg.autodata; }));
@@ -341,7 +352,6 @@ void spifi3_device::select_w(uint32_t data)
 {
 	LOG("write spifi_reg.select = 0x%x\n", data);
 	spifi_reg.select = data & ~SEL_ISTART;
-	tm->adjust(clocks_to_attotime(1));
 
 	if(data & SEL_ISTART)
 	{
@@ -507,10 +517,11 @@ void spifi3_device::device_timer(emu_timer &timer, device_timer_id id, int param
 void spifi3_device::check_irq()
 {
 	// There are various ways interrupts can be triggered by the SPIFI - this method is a work in progress.
-	bool irqState = (spifi_reg.intr & spifi_reg.imask) > 0; // ICOND plays a role here - need to determine how to make sure it is in sync
+	bool irqState = (spifi_reg.intr & ~spifi_reg.imask) > 0; // ICOND plays a role here - need to determine how to make sure it is in sync
 
 	if(irq != irqState)
 	{
+		LOG("Setting IRQ line to %d\n", irqState);
 		irq = irqState;
 		m_irq_handler(irq);
 	}
@@ -561,6 +572,31 @@ void spifi3_device::reset_disconnect()
 	command_length = 0;
 	// memset(command, 0, sizeof(command)); TODO: spifi3 equiv
 	mode = MODE_D;
+}
+
+void spifi3_device::send_cmd_byte()
+{
+	state = (state & STATE_MASK) | (SEND_WAIT_SETTLE << SUB_SHIFT);
+
+	if((state & STATE_MASK) != INIT_XFR_SEND_PAD && ((state & STATE_MASK) != DISC_SEL_SEND_BYTE || command_length))
+	{
+		// Send next data from cmbuf.
+		if(command_pos > 11)
+		{
+			fatalerror("Tried to send command past the end of cdb! Command_pos: %d", command_pos);
+		}
+		scsi_bus->data_w(scsi_refid, spifi_reg.cmbuf[scsi_refid].cdb[command_pos++]);
+		m_even_fifo.pop();
+	}
+	else
+	{
+		// Send 0
+		scsi_bus->data_w(scsi_refid, 0);
+	}
+
+	scsi_bus->ctrl_w(scsi_refid, S_ACK, S_ACK);
+	scsi_bus->ctrl_wait(scsi_refid, S_REQ, S_REQ);
+	delay_cycles(sync_period);
 }
 
 void spifi3_device::send_byte()
@@ -672,7 +708,7 @@ void spifi3_device::delay_cycles(int cycles)
 
 void spifi3_device::arbitrate()
 {
-	spifi_reg.spstat = SPS_ARB;
+	//spifi_reg.spstat = SPS_ARB;
 	state = (state & STATE_MASK) | (ARB_COMPLETE << SUB_SHIFT);
 	scsi_bus->data_w(scsi_refid, 1 << scsi_id);
 	scsi_bus->ctrl_w(scsi_refid, S_BSY, S_BSY);
@@ -878,6 +914,7 @@ void spifi3_device::step(bool timeout)
 				state = IDLE;
 				//spifi_reg.spstat = SPS_DISCON << 4; // Set disconnected flag since we don't have a connection. Bit shift to match NetBSD, but that needs to be tested/investigated
 				spifi_reg.intr = INTR_TIMEO; // signal timeout
+				//spifi_reg.intr = 0xff;
 				// TODO: Set Z state flag? Any interrupts needed? Timeout, maybe?
 				reset_disconnect();
 				check_irq();
@@ -953,7 +990,7 @@ void spifi3_device::step(bool timeout)
 		case DISC_SEL_ARBITRATION_INIT: // Arbitration and selection complete, time to execute the queued command
 		{
 			// Wait for command to be provided
-			if ((spifi_reg.prcmd & PRC_NJMP) || !(spifi_reg.prcmd & PRC_COMMAND)) 
+			if (((spifi_reg.prcmd & PRC_NJMP) || !(spifi_reg.prcmd & PRC_COMMAND)) && !(spifi_reg.cmlen | CML_ACOM_EN)) // Don't break if autocmd is enabled 
 			{
 				// dma starts after bus arbitration/selection is complete
 				check_drq();
@@ -961,6 +998,7 @@ void spifi3_device::step(bool timeout)
 			}
 
 			command_length = spifi_reg.cmlen & CML_LENMASK; // TODO: do the upper bytes actually matter (as in, does the NWS series actually use anything else?)
+			command_pos = 0;
 			state = DISC_SEL_ARBITRATION;
 			step(false);
 			break;
@@ -1001,7 +1039,7 @@ void spifi3_device::step(bool timeout)
 				scsi_bus->ctrl_w(scsi_refid, 0, S_ATN);
 			}
 			state = DISC_SEL_ATN_SEND_BYTE;
-			send_byte();
+			send_cmd_byte();
 			break;
 		}
 

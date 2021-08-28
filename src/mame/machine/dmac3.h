@@ -49,8 +49,27 @@ public:
         map(0x10, 0x13).rw(FUNC(dmac3_device::conf_r<controller>), FUNC(dmac3_device::conf_w<controller>));
     }
 
+    template <DMAC3_Controller controller>
+    void irq_w(int state) 
+    {
+        if (state)
+        {
+            m_controllers[controller].intr |= 0x1; // TODO: const
+        }
+        else
+        {
+            m_controllers[controller].intr &= ~0x1;
+        }
+        check_irq();
+    }
+    auto irq_out() { return m_irq_handler.bind(); }
+
 protected:
-	virtual void device_start() override {};
+    virtual void device_start() override { m_irq_handler.resolve_safe(); }
+
+    devcb_write_line m_irq_handler;
+    bool m_irq = false;
+    void check_irq();
 
     // DMAC3 requires off-board RAM to be allocated for the DMA map
     // The platform host controls this configuration.
@@ -114,6 +133,8 @@ protected:
         CSR_DBURST = 0x0020,
     };
 
+    const uint32_t INTR_CLR_MASK = (INTR_INT | INTR_TCI | INTR_EOP | INTR_EOPI | INTR_DREQ | INTR_DRQIE | INTR_PERR); // TODO: are EOP, PERR, DREQ actually intr?
+    const uint32_t INTR_EN_MASK = (INTR_INTEN | INTR_TCIE | INTR_EOPIE | INTR_DRQIE);
     enum intr_mask : uint32_t
     {
         INTR_INT = 0x0001,
