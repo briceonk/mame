@@ -61,8 +61,8 @@
  *   - National Semi DP83932B-VF SONIC Ethernet controller: Not fully working yet (also, is using -C rather than -B version)
  *   - Sony CXD8452AQ WSC-SONIC3 SONIC Ethernet APbus interface controller: partially emulated
  *   - Sony CXD8418Q WSC-PARK3: not fully emulated, but some of the general platform functions may come from this chip (most likely a gate array based on what the PARK2 was in older gen NEWS systems)
- *   - Sony CXD8403Q DMAC3Q DMA controller: skeleton
- *   - 2x HP 1TV3-0302 SPIFI3 SCSI controllers: skeleton
+ *   - Sony CXD8403Q DMAC3Q DMA controller: WIP
+ *   - 2x HP 1TV3-0302 SPIFI3 SCSI controllers: WIP
  *   - ST Micro M58T02-150PC1 Timekeeper RAM: emulated
  *  DSC-39 XB Framebuffer/video card:
  *   - Sony CXD8486Q XB: not emulated (most likely APbus interface)
