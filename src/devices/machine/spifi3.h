@@ -55,8 +55,15 @@ private:
 		MODE_I  // Initiator
 	};
 
-    // State tracking variables
+	enum ScsiDataSource
+	{
+		COMMAND_BUFFER,
+		FIFO
+	};
+
+	// State tracking variables
 	ScsiMode mode; // Target or initiatior?
+	ScsiDataSource xfrDataSource; // where are we transferring data from?
 	int state; // SCSI controller state
 	int xfr_phase;
 	int command_length;

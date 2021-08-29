@@ -1074,6 +1074,7 @@ void spifi3_device::step(bool timeout)
 				command_pos = 0;
 				if(spifi_reg.cmlen | CML_ACOM_EN)
 				{
+					scsi_bus->ctrl_w(scsi_refid, 0, S_ACK); // XXX Deassert ACK - just trying this out
 					state = INIT_XFR;
 					xfr_phase = scsi_bus->ctrl_r() & S_PHASE_MASK; // XXX is this OK??
 					check_drq(); // XXX needed?
@@ -1180,17 +1181,19 @@ void spifi3_device::step(bool timeout)
 					}
 
 					// if it's the last message byte, deassert ATN before sending
-					if (xfr_phase == S_PHASE_MSG_OUT && ((!dma_command && m_even_fifo.size() == 1) || (dma_command && tcounter == 1)))
+					if (xfr_phase == S_PHASE_MSG_OUT && ((!dma_command && m_even_fifo.size() == 1) || (dma_command && tcounter == 1))) // TODO: command equiv
 					{
 						scsi_bus->ctrl_w(scsi_refid, 0, S_ATN);
 					}
 
 					if(xfr_phase == S_PHASE_DATA_OUT)
 					{
+						xfrDataSource = FIFO;
 						send_byte();
 					}
 					else // send from cdb buffer
 					{
+						xfrDataSource = COMMAND_BUFFER;
 						send_cmd_byte();
 					}
 					break;
@@ -1207,7 +1210,7 @@ void spifi3_device::step(bool timeout)
 					}
 
 					// if it's the last message byte, ACK remains asserted, terminate with function_complete()
-					state = (xfr_phase == S_PHASE_MSG_IN && (!dma_command || tcounter == 1)) ? INIT_XFR_RECV_BYTE_NACK : INIT_XFR_RECV_BYTE_ACK;
+					state = (xfr_phase == S_PHASE_MSG_IN && (!dma_command || tcounter == 1)) ? INIT_XFR_RECV_BYTE_NACK : INIT_XFR_RECV_BYTE_ACK; // TODO: command equiv
 
 					recv_byte();
 					break;
@@ -1230,11 +1233,18 @@ void spifi3_device::step(bool timeout)
 				break;
 			}
 
-			// check for command complete -- TODO need to change how this works
-			if ((dma_command && transfer_count_zero() && (dma_dir == DMA_IN || m_even_fifo.empty())) // dma in/out: transfer count == 0
+			// check for command complete
+			if (xfrDataSource == FIFO && // Done transferring data
+			((dma_command && transfer_count_zero() && (dma_dir == DMA_IN || m_even_fifo.empty())) // dma in/out: transfer count == 0
 			|| (!dma_command && (xfr_phase & S_INP) == 0 && m_even_fifo.empty()) // non-dma out: fifo empty
-			|| (!dma_command && (xfr_phase & S_INP) == S_INP && m_even_fifo.size() == 1)) // non-dma in: every byte
+			|| (!dma_command && (xfr_phase & S_INP) == S_INP && m_even_fifo.size() == 1))) // non-dma in: every byte
 			{
+				LOG("Data transfer complete\n");
+				state = INIT_XFR_BUS_COMPLETE;
+			}
+			else if(xfrDataSource == COMMAND_BUFFER && command_pos >= spifi_reg.cmlen) // Done transferring message or command
+			{
+				LOG("Command transfer complete\n");
 				state = INIT_XFR_BUS_COMPLETE;
 			}
 			else
@@ -1242,11 +1252,13 @@ void spifi3_device::step(bool timeout)
 				// check for phase change
 				if((ctrl & S_PHASE_MASK) != xfr_phase) 
 				{
+					LOG("Phase changed to %d\n", ctrl & S_PHASE_MASK);
 					command_pos = 0;
 					state = INIT_XFR_BUS_COMPLETE;
 				} 
 				else 
 				{
+					LOG("Continuing transfer\n");
 					state = INIT_XFR;
 				}
 			}
