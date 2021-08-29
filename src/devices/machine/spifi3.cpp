@@ -65,7 +65,7 @@ void spifi3_device::device_start()
 	// select_timeout = 0;
 
 	bus_id = 0;
-	tm = timer_alloc(100);
+	tm = timer_alloc(0);
 }
 
 void spifi3_device::map(address_map &map)
@@ -966,7 +966,9 @@ void spifi3_device::step(bool timeout)
 
 			if((state & STATE_MASK) != INIT_XFR_RECV_PAD)
 			{
-				m_even_fifo.push(scsi_bus->data_r());
+				auto data = scsi_bus->data_r();
+				LOG("Got 0x%x!\n", data);
+				m_even_fifo.push(data);
 			}
 			scsi_bus->ctrl_w(scsi_refid, S_ACK, S_ACK);
 			state = (state & STATE_MASK) | (RECV_WAIT_REQ_0 << SUB_SHIFT);
@@ -1212,6 +1214,7 @@ void spifi3_device::step(bool timeout)
 					// if it's the last message byte, ACK remains asserted, terminate with function_complete()
 					state = (xfr_phase == S_PHASE_MSG_IN && (!dma_command || tcounter == 1)) ? INIT_XFR_RECV_BYTE_NACK : INIT_XFR_RECV_BYTE_ACK; // TODO: command equiv
 
+					xfrDataSource = FIFO;
 					recv_byte();
 					break;
 				}
@@ -1242,10 +1245,22 @@ void spifi3_device::step(bool timeout)
 				LOG("Data transfer complete\n");
 				state = INIT_XFR_BUS_COMPLETE;
 			}
-			else if(xfrDataSource == COMMAND_BUFFER && command_pos >= spifi_reg.cmlen) // Done transferring message or command
+			else if(xfrDataSource == COMMAND_BUFFER && (command_pos >= (spifi_reg.cmlen & CML_LENMASK))) // Done transferring message or command
 			{
 				LOG("Command transfer complete\n");
 				state = INIT_XFR_BUS_COMPLETE;
+				// spifi_reg.icond |= ICOND_ACMDOFF; XXX ???
+
+				// If autodata is enabled for this target, then we don't need to notify the host, we just keep going with the transfer instead.
+				// If the target gives us a non-data phase, though, we will notify the host. Is this the correct behavior??
+				auto newPhase = (ctrl & S_PHASE_MASK);
+				if ( (newPhase == S_PHASE_DATA_IN && (((spifi_reg.autodata & (ADATA_EN | ADATA_IN)) == (ADATA_EN | ADATA_IN))
+					 || (newPhase == S_PHASE_DATA_OUT && ((spifi_reg.autodata & (ADATA_EN | ADATA_IN)) == ADATA_EN))))) // TODO: ID enforcement
+				{
+					state = INIT_XFR;
+					xfr_phase = newPhase;
+					step(false);
+				}
 			}
 			else
 			{
@@ -1277,6 +1292,7 @@ void spifi3_device::step(bool timeout)
 		{
 			state = INIT_XFR_WAIT_REQ;
 			scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
+			step(false);
 			break;
 		}
 

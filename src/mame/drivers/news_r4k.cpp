@@ -360,6 +360,7 @@ void news_r4k_state::machine_common(machine_config &config)
     // DMA controller
     // TODO: interrupts, join bus, etc.
     DMAC3(config, m_dmac, 0);
+    m_dmac->set_base_map_address(0x14c20000);
     m_dmac->irq_out().set(FUNC(news_r4k_state::irq_w<DMAC>));
 
     // Create SCSI buses
