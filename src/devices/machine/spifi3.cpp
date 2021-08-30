@@ -98,8 +98,8 @@ void spifi3_device::map(address_map &map)
 	map(0x2c, 0x2f).lrw32(NAME([this]() { LOG("read spifi_reg.prctrl = 0x%x\n", spifi_reg.prctrl); return spifi_reg.prctrl; }), NAME([this](uint32_t data) { LOG("write spifi_reg.prctrl = 0x%x\n", data); spifi_reg.prctrl = data; }));
 	map(0x30, 0x33).lrw32(NAME([this]()
 							   {
-								   LOG("read spifi_reg.prstat = 0x%x\n", spifi_reg.prstat | PRS_Z);
-								   return spifi_reg.prstat | PRS_Z;
+								   LOG("read spifi_reg.prstat = 0x%x\n", spifi_reg.prstat);
+								   return spifi_reg.prstat;
 							   }),
 						  NAME([this](uint32_t data)
 							   {
