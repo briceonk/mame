@@ -189,7 +189,7 @@ TIMER_CALLBACK_MEMBER(dmac3_device::dma_check)
 		if(m_controllers[controller].csr & CSR_RECV)
 		{
 			// Device to memory
-			uint8_t data = m_dma_r[controller](); // TODO: byte at a time?
+			uint8_t data = m_dma_r[controller]();
 			LOG("dma_r data 0x%02x address 0x%08x\n", data, address);
 			m_bus->write_byte(address, data);
 		}
