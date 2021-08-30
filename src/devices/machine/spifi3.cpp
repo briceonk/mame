@@ -96,16 +96,6 @@ void spifi3_device::map(address_map &map)
     map(0x20, 0x23).lrw32(NAME([this]() { LOG("read spifi_reg.svptr_low = 0x%x\n", spifi_reg.svptr_low); return spifi_reg.svptr_low; }), NAME([this](uint32_t data) { LOG("write spifi_reg.svptr_low = 0x%x\n", data); spifi_reg.svptr_low = data; }));
     map(0x28, 0x2b).lrw32(NAME([this]() { LOG("read spifi_reg.imask = 0x%x\n", spifi_reg.imask); return spifi_reg.imask; }), NAME([this](uint32_t data) { LOG("write spifi_reg.imask = 0x%x\n", data); spifi_reg.imask = data; }));
     map(0x2c, 0x2f).lrw32(NAME([this]() { LOG("read spifi_reg.prctrl = 0x%x\n", spifi_reg.prctrl); return spifi_reg.prctrl; }), NAME([this](uint32_t data) { LOG("write spifi_reg.prctrl = 0x%x\n", data); spifi_reg.prctrl = data; }));
-    map(0x30, 0x33).lrw32(NAME([this]()
-                               {
-                                   LOG("read spifi_reg.prstat = 0x%x\n", spifi_reg.prstat);
-                                   return spifi_reg.prstat;
-                               }),
-                          NAME([this](uint32_t data)
-                               {
-                                   LOG("write spifi_reg.prstat = 0x%x\n", data);
-                                   spifi_reg.prstat = data;
-                               }));
     map(0x3c, 0x3f).lrw32(NAME([this]() { LOG("read spifi_reg.fifodata = 0x%x\n", spifi_reg.fifodata); return spifi_reg.fifodata; }), NAME([this](uint32_t data) { LOG("write spifi_reg.fifodata = 0x%x\n", data); spifi_reg.fifodata = data; }));
     map(0x44, 0x47).lrw32(NAME([this]() { LOG("read spifi_reg.data_xfer = 0x%x\n", spifi_reg.data_xfer); return spifi_reg.data_xfer; }), NAME([this](uint32_t data) { LOG("write spifi_reg.data_xfer = 0x%x\n", data); spifi_reg.data_xfer = data; }));
     map(0x48, 0x4b).lrw32(NAME([this]() { LOG("read spifi_reg.autocmd = 0x%x\n", spifi_reg.autocmd); return spifi_reg.autocmd; }), NAME([this](uint32_t data) { LOG("write spifi_reg.autocmd = 0x%x\n", data); spifi_reg.autocmd = data; }));
@@ -198,12 +188,11 @@ void spifi3_device::map(address_map &map)
                                }));
 
     // Below this line probably won't need to change
+    map(0x30, 0x33).r(FUNC(spifi3_device::prstat_r));
     map(0x38, 0x3b).rw(FUNC(spifi3_device::fifoctrl_r), FUNC(spifi3_device::fifoctrl_w));
     map(0x40, 0x43).lrw32(NAME([this]() { LOG("read spifi_reg.config = 0x%x\n", spifi_reg.config); return spifi_reg.config; }), NAME([this](uint32_t data) { LOG("write spifi_reg.config = 0x%x\n", data); spifi_reg.config = data; }));
     map(0x54, 0x57).w(FUNC(spifi3_device::select_w));
-    map(0x54, 0x57).lr32(NAME([this]() { LOG("read spifi_reg.select = 0x%x\n", spifi_reg.select);
-        select_w(spifi_reg.select | SEL_ISTART);
-         return spifi_reg.select; })); // XXX mrom expects selection retries to happen automatically, but it does read the register - does this trigger a reselection attempt?
+    map(0x54, 0x57).lr32(NAME([this]() { LOG("read spifi_reg.select = 0x%x\n", spifi_reg.select); select_w(spifi_reg.select | SEL_ISTART); return spifi_reg.select; })); // XXX mrom expects selection retries to happen automatically, but it does read the register - does this trigger a reselection attempt?
     map(0x5c, 0x5f).rw(FUNC(spifi3_device::auxctrl_r), FUNC(spifi3_device::auxctrl_w));
     map(0x60, 0x63).w(FUNC(spifi3_device::autodata_w));
     map(0x60, 0x63).lr32(NAME([this]() { LOG("read spifi_reg.autodata = 0x%x\n", spifi_reg.autodata); return spifi_reg.autodata; }));
@@ -372,6 +361,20 @@ void spifi3_device::autodata_w(uint32_t data)
     {
         LOG("autodata enabled! target %d direction %s\n", spifi_reg.autodata & ADATA_TARGET_ID, spifi_reg.autodata & ADATA_IN ? "in" : "out");
     }
+}
+
+uint32_t spifi3_device::prstat_r()
+{
+    auto ctrl = scsi_bus->ctrl_r();
+    uint32_t prstat = 0;
+    prstat |= (ctrl & S_ATN) ? PRS_ATN : 0;
+    prstat |= (ctrl & S_MSG) ? PRS_MSG : 0;
+    prstat |= (ctrl & S_CTL) ? PRS_CD : 0;
+    prstat |= (ctrl & S_INP) ? PRS_IO : 0;
+    // TODO: PRS_Z, which is 1 when the bus is free, and 0 during REQ/ACK handshakes
+    spifi_reg.prstat = prstat; // Might be able to get rid of the register copy of this since we can compute it on demand.
+    LOG("read spifi_reg.prstat = 0x%x\n", prstat);
+    return prstat;
 }
 
 /*

@@ -301,6 +301,7 @@ private:
     const uint32_t PRS_ATN = 0x40;
     const uint32_t PRS_Z = 0x80;
     const uint32_t PRS_PHASE = (PRS_MSG | PRS_CD | PRS_IO);
+    uint32_t prstat_r();
 
     // Interrupt status register
     const uint32_t INTR_BSRQ = 0x01;
@@ -339,7 +340,7 @@ private:
     const uint32_t SEL_SETATN = 0x02;	// Set ATN??? NetBSD doesn't use this...
     const uint32_t SEL_IRESELEN = 0x04; // Enable reselection phase
     const uint32_t SEL_ISTART = 0x08;	// Start selection
-    const uint32_t SEL_WATN = 0x80;		// ???????
+    const uint32_t SEL_WATN = 0x80;		// Select with ATN
     const uint32_t SEL_TARGET = 0x70;
     void select_w(uint32_t data);
 
