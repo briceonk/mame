@@ -358,10 +358,11 @@ void news_r4k_state::machine_common(machine_config &config)
     m_fifo0->bind_dma_r<cxd8442q_device::FifoChannelNumber::CH2>([this]() { return (uint32_t)(m_fdc->dma_r()); });
 
     // DMA controller
-    // TODO: interrupts, join bus, etc.
     DMAC3(config, m_dmac, 0);
     m_dmac->set_base_map_address(0x14c20000);
+    m_dmac->set_bus(m_cpu, 0);
     m_dmac->irq_out().set(FUNC(news_r4k_state::irq_w<DMAC>));
+    printf("DMAC constructed! %p\n", m_dmac.target());
 
     // Create SCSI buses
     NSCSI_BUS(config, m_scsibus0);
@@ -386,13 +387,17 @@ void news_r4k_state::machine_common(machine_config &config)
     NSCSI_CONNECTOR(config, "scsi1:6", news_scsi_devices, nullptr);
 
     // Connect SPIFI3s to the buses
-    // TODO: Actual clock and SCSI config (see news_r3k for what this might look like in the future)
+    // TODO: Actual clock frequency
     NSCSI_CONNECTOR(config, "scsi0:7").option_set("spifi3", SPIFI3).clock(16'000'000).machine_config([this](device_t *device)
-                                                                                                     {
-                                                                                                         spifi3_device &adapter = downcast<spifi3_device &>(*device);
-                                                                                                         adapter.irq_handler_cb().set(m_dmac, FUNC(dmac3_device::irq_w<dmac3_device::CTRL0>));
-                                                                                                     });
+    { 
+        spifi3_device &adapter = downcast<spifi3_device &>(*device);
+        adapter.irq_handler_cb().set(m_dmac, FUNC(dmac3_device::irq_w<dmac3_device::CTRL0>));
+        adapter.drq_handler_cb().set(m_dmac, FUNC(dmac3_device::drq_w<dmac3_device::CTRL0>));
+    });
     NSCSI_CONNECTOR(config, "scsi1:7").option_set("spifi3", SPIFI3).clock(16'000'000).machine_config([this](device_t *device) {});
+
+    m_dmac->dma_r_cb<dmac3_device::CTRL0>().set(m_scsi0, FUNC(spifi3_device::dma_r));
+    m_dmac->dma_w_cb<dmac3_device::CTRL0>().set(m_scsi0, FUNC(spifi3_device::dma_w));
 }
 
 void news_r4k_state::nws5000x(machine_config &config) { machine_common(config); }

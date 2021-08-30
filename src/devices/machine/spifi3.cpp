@@ -541,6 +541,7 @@ void spifi3_device::check_drq()
 
 		case DMA_IN: // device to memory
 		{
+			LOG("Checking DRQ! Even fifo count: %d\n", m_even_fifo.size());
 			drq_state = !transfer_count_zero() && !m_even_fifo.empty();
 			break;
 		}
@@ -713,6 +714,24 @@ void spifi3_device::arbitrate()
 	scsi_bus->data_w(scsi_refid, 1 << scsi_id);
 	scsi_bus->ctrl_w(scsi_refid, S_BSY, S_BSY);
 	delay(11);
+}
+
+void spifi3_device::dma_w(uint8_t val)
+{
+	m_even_fifo.push(val);
+	decrement_tcounter();
+	check_drq();
+	step(false);
+}
+
+uint8_t spifi3_device::dma_r()
+{
+	uint8_t val = m_even_fifo.front();
+	m_even_fifo.pop();
+	decrement_tcounter();
+	check_drq();
+	step(false);
+	return val;
 }
 
 void spifi3_device::step(bool timeout)
@@ -993,7 +1012,7 @@ void spifi3_device::step(bool timeout)
 			// Wait for a command, or if autoidentify was enabled, just do it
 			// This is reverse engineered from what the NWS-5000 MROM does - NetBSD doesn't use this at all
 			// so this may not be fully accurate.
-			if (((spifi_reg.prcmd & PRC_NJMP) || !(spifi_reg.prcmd & PRC_COMMAND)) && !(spifi_reg.identify & 0x80)) // had && !(spifi_reg.cmlen | CML_ACOM_EN) here, but it needs to move
+			if (((spifi_reg.prcmd & PRC_NJMP) || !(spifi_reg.prcmd & PRC_COMMAND)) && !(spifi_reg.identify & 0x80)) // had && !(spifi_reg.cmlen & CML_ACOM_EN) here, but it needs to move
 			{
 				// dma starts after bus arbitration/selection is complete
 				check_drq();
@@ -1018,7 +1037,7 @@ void spifi3_device::step(bool timeout)
 
 		case DISC_SEL_ARBITRATION:
 		{
-			if(!(spifi_reg.select | SEL_WATN)) //c == CD_SELECT) TODO: is this right? SEL wait with no ATN?
+			if(!(spifi_reg.select & SEL_WATN)) //c == CD_SELECT) TODO: is this right? SEL wait with no ATN?
 			{
 				state = DISC_SEL_WAIT_REQ;
 			} 
@@ -1046,7 +1065,7 @@ void spifi3_device::step(bool timeout)
 				function_complete();
 				break;
 			}
-			if(spifi_reg.select | SEL_WATN) // c == CD_SELECT_ATN) Deassert ATN now if we asserted it before
+			if(spifi_reg.select & SEL_WATN) // c == CD_SELECT_ATN) Deassert ATN now if we asserted it before
 			{
 				scsi_bus->ctrl_w(scsi_refid, 0, S_ATN);
 			}
@@ -1074,7 +1093,7 @@ void spifi3_device::step(bool timeout)
 				// XXX RE ALERT - MIGHT BE WAY OFF
 				// autoidentified target, now we need to see if autocmd is enabled. If so, we can just proceed to the XFR phase automatically.
 				command_pos = 0;
-				if(spifi_reg.cmlen | CML_ACOM_EN)
+				if(spifi_reg.cmlen & CML_ACOM_EN)
 				{
 					scsi_bus->ctrl_w(scsi_refid, 0, S_ACK); // XXX Deassert ACK - just trying this out
 					state = INIT_XFR;
@@ -1208,6 +1227,7 @@ void spifi3_device::step(bool timeout)
 					// can't receive if the fifo is full
 					if (m_even_fifo.size() == 8)
 					{
+						check_drq(); // in case data should be transferred now
 						break;
 					}
 
@@ -1252,6 +1272,7 @@ void spifi3_device::step(bool timeout)
 				// spifi_reg.icond |= ICOND_ACMDOFF; XXX ???
 
 				// If autodata is enabled for this target, then we don't need to notify the host, we just keep going with the transfer instead.
+				// XXX is this the right interpretation??
 				// If the target gives us a non-data phase, though, we will notify the host. Is this the correct behavior??
 				auto newPhase = (ctrl & S_PHASE_MASK);
 				if ( (newPhase == S_PHASE_DATA_IN && (((spifi_reg.autodata & (ADATA_EN | ADATA_IN)) == (ADATA_EN | ADATA_IN))
@@ -1259,6 +1280,15 @@ void spifi3_device::step(bool timeout)
 				{
 					state = INIT_XFR;
 					xfr_phase = newPhase;
+					dma_command = true;
+					if (newPhase == S_PHASE_DATA_IN)
+					{
+						dma_dir = DMA_IN;
+					} 
+					else
+					{
+						dma_dir = DMA_OUT;
+					}
 					step(false);
 				}
 			}

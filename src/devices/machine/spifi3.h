@@ -42,6 +42,9 @@ public:
 	auto irq_handler_cb() { return m_irq_handler.bind(); }
 	auto drq_handler_cb() { return m_drq_handler.bind(); }
 
+	uint8_t dma_r();
+	void dma_w(uint8_t val);
+
 protected:
 	virtual void device_start() override;
 	virtual void device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) override;
