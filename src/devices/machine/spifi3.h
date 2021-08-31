@@ -351,16 +351,21 @@ private:
     void autodata_w(uint32_t data);
 
     // prcmd
-    const uint32_t PRC_DATAOUT = 0;
-    const uint32_t PRC_DATAIN = 1;
-    const uint32_t PRC_COMMAND = 2;
-    const uint32_t PRC_STATUS = 3;
-    const uint32_t PRC_TRPAD = 4;
-    const uint32_t PRC_MSGOUT = 6;
-    const uint32_t PRC_MSGIN = 7;
-    const uint32_t PRC_KILLREQ = 0x08;
-    const uint32_t PRC_CLRACK = 0x10;
-    const uint32_t PRC_NJMP = 0x80;
+    enum PRCMD_COMMANDS : uint32_t
+    {
+        PRC_DATAOUT = 0x0,
+        PRC_DATAIN = 0x1,
+        PRC_COMMAND = 0x2,
+        PRC_STATUS = 0x3,
+        PRC_TRPAD = 0x4,
+        PRC_MSGOUT = 0x6,
+        PRC_MSGIN = 0x7,
+        PRC_KILLREQ = 0x08,
+        PRC_CLRACK = 0x10,
+        PRC_NJMP = 0x80
+    };
+    uint32_t prcmd_r();
+    void prcmd_w(uint32_t data);
 
     // Command buffer constants and functions
     uint8_t cmd_buf_r(offs_t offset);

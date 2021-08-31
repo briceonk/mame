@@ -190,7 +190,7 @@ TIMER_CALLBACK_MEMBER(dmac3_device::dma_check)
 		{
 			// Device to memory
 			uint8_t data = m_dma_r[controller]();
-			LOG("dma_r data 0x%02x address 0x%08x\n", data, address);
+			LOG("dma_r data 0x%02x address 0x%08x count %d -> %d\n", data, address, m_controllers[controller].length, m_controllers[controller].length - 1);
 			m_bus->write_byte(address, data);
 		}
 		else

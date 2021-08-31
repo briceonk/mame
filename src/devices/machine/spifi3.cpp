@@ -101,7 +101,6 @@ void spifi3_device::map(address_map &map)
     map(0x48, 0x4b).lrw32(NAME([this]() { LOG("read spifi_reg.autocmd = 0x%x\n", spifi_reg.autocmd); return spifi_reg.autocmd; }), NAME([this](uint32_t data) { LOG("write spifi_reg.autocmd = 0x%x\n", data); spifi_reg.autocmd = data; }));
     map(0x4c, 0x4f).lrw32(NAME([this]() { LOG("read spifi_reg.autostat = 0x%x\n", spifi_reg.autostat); return spifi_reg.autostat; }), NAME([this](uint32_t data) { LOG("write spifi_reg.autostat = 0x%x\n", data); spifi_reg.autostat = data; }));
     map(0x50, 0x53).lrw32(NAME([this]() { LOG("read spifi_reg.resel = 0x%x\n", spifi_reg.resel); return spifi_reg.resel; }), NAME([this](uint32_t data) { LOG("write spifi_reg.resel = 0x%x\n", data); spifi_reg.resel = data; }));
-    map(0x58, 0x5b).lrw32(NAME([this]() { LOG("read spifi_reg.prcmd = 0x%x\n", spifi_reg.prcmd); return spifi_reg.prcmd; }), NAME([this](uint32_t data) { LOG("write spifi_reg.prcmd = 0x%x\n", data); spifi_reg.prcmd = data; }));
     map(0x64, 0x67).lrw32(NAME([this]() { LOG("read spifi_reg.loopctrl = 0x%x\n", spifi_reg.loopctrl); return spifi_reg.loopctrl; }), NAME([this](uint32_t data) { LOG("write spifi_reg.loopctrl = 0x%x\n", data); spifi_reg.loopctrl = data; }));
     map(0x68, 0x6b).lrw32(NAME([this]() { LOG("read spifi_reg.loopdata = 0x%x\n", spifi_reg.loopdata); return spifi_reg.loopdata; }), NAME([this](uint32_t data) { LOG("write spifi_reg.loopdata = 0x%x\n", data); spifi_reg.loopdata = data; }));
     map(0x6c, 0x6f).lrw32(NAME([this]() { LOG("read spifi_reg.identify = 0x%x\n", spifi_reg.identify); return spifi_reg.identify; }), NAME([this](uint32_t data) { LOG("write spifi_reg.identify = 0x%x\n", data); spifi_reg.identify = data; }));
@@ -193,6 +192,7 @@ void spifi3_device::map(address_map &map)
     map(0x40, 0x43).lrw32(NAME([this]() { LOG("read spifi_reg.config = 0x%x\n", spifi_reg.config); return spifi_reg.config; }), NAME([this](uint32_t data) { LOG("write spifi_reg.config = 0x%x\n", data); spifi_reg.config = data; }));
     map(0x54, 0x57).w(FUNC(spifi3_device::select_w));
     map(0x54, 0x57).lr32(NAME([this]() { LOG("read spifi_reg.select = 0x%x\n", spifi_reg.select); select_w(spifi_reg.select | SEL_ISTART); return spifi_reg.select; })); // XXX mrom expects selection retries to happen automatically, but it does read the register - does this trigger a reselection attempt?
+    map(0x58, 0x5b).rw(FUNC(spifi3_device::prcmd_r), FUNC(spifi3_device::prcmd_w));
     map(0x5c, 0x5f).rw(FUNC(spifi3_device::auxctrl_r), FUNC(spifi3_device::auxctrl_w));
     map(0x60, 0x63).w(FUNC(spifi3_device::autodata_w));
     map(0x60, 0x63).lr32(NAME([this]() { LOG("read spifi_reg.autodata = 0x%x\n", spifi_reg.autodata); return spifi_reg.autodata; }));
@@ -376,6 +376,55 @@ uint32_t spifi3_device::prstat_r()
     LOG("read spifi_reg.prstat = 0x%x\n", prstat);
     return prstat;
 }
+
+// rw32(NAME([this]() {  }), NAME([this](uint32_t data) { }));
+uint32_t spifi3_device::prcmd_r()
+{
+    LOG("read spifi_reg.prcmd = 0x%x\n", spifi_reg.prcmd);
+    return spifi_reg.prcmd;
+}
+
+void spifi3_device::prcmd_w(uint32_t data)
+{
+    LOG("write spifi_reg.prcmd = 0x%x\n", data);
+    spifi_reg.prcmd = data;
+
+    switch(data) // TODO: commands might be queued like the 5390?
+    {
+        case PRC_STATUS:
+        {
+            LOG("Got STATUS command! Starting transfer of status information...\n");
+            state = INIT_XFR;
+            xfr_phase = scsi_bus->ctrl_r() & S_PHASE_MASK;
+
+            // dma_set(dma_command ? ((xfr_phase & S_INP) ? DMA_IN : DMA_OUT) : DMA_NONE); // TODO: proper setting of DMA???
+            dma_command = false; // xxx
+            dma_set(DMA_NONE); // xxx
+            check_drq();
+            step(false);
+            break;
+        }
+        case PRC_MSGIN:
+        {
+            LOG("Got MSGIN command! Starting message input phase...\n");
+            state = INIT_XFR;
+            xfr_phase = scsi_bus->ctrl_r() & S_PHASE_MASK;
+
+            dma_command = false; // xxx
+            dma_set(DMA_NONE); // xxx
+            check_drq();
+            step(false);
+            break;
+        }
+        default:
+        {
+            LOG("Unimplemented command %d!\n", data);
+            break;
+        }
+    }
+}
+
+
 
 /*
 void ncr5390_device::start_command()
