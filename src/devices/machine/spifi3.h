@@ -48,6 +48,7 @@ public:
 protected:
     virtual void device_start() override;
     virtual void device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) override;
+	virtual void scsi_ctrl_changed() override;
 
 private:
     enum ScsiMode
@@ -143,7 +144,8 @@ private:
         INIT_XFR_WAIT_REQ,
         INIT_CPT_RECV_BYTE_ACK,
         INIT_CPT_RECV_WAIT_REQ,
-        INIT_CPT_RECV_BYTE_NACK
+        INIT_CPT_RECV_BYTE_NACK,
+        INIT_XFR_RECV_BYTE_ACK_AUTOMSG
     };
 
     enum

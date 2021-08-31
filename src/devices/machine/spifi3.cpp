@@ -783,6 +783,17 @@ uint8_t spifi3_device::dma_r()
     return val;
 }
 
+void spifi3_device::scsi_ctrl_changed()
+{
+	uint32_t ctrl = scsi_bus->ctrl_r();
+	if(ctrl & S_RST) {
+		LOG("scsi bus reset\n");
+		return;
+	}
+
+	step(false);
+}
+
 void spifi3_device::step(bool timeout)
 {
     uint32_t ctrl = scsi_bus->ctrl_r();
@@ -1097,7 +1108,7 @@ void spifi3_device::step(bool timeout)
             }
 
             scsi_bus->ctrl_wait(scsi_refid, S_REQ, S_REQ); // wait for REQ
-            if(ctrl & S_REQ)
+            if (ctrl & S_REQ)
             {
                 step(false);
             }
@@ -1127,10 +1138,10 @@ void spifi3_device::step(bool timeout)
             else // autoidentify
             {
                 // TODO: refactor me
-                scsi_bus->data_w(scsi_refid, 0x80); // TODO: calc DiscPriv and LUNTAR from register
+                scsi_bus->data_w(scsi_refid, 0x80);         // TODO: calc DiscPriv and LUNTAR from register
                 scsi_bus->ctrl_w(scsi_refid, S_ACK, S_ACK); // Send ACK
                 scsi_bus->ctrl_wait(scsi_refid, S_REQ, S_REQ); // Wait for REQ
-                delay_cycles(sync_period); // Delay till next cycle
+                // delay_cycles(sync_period); // Delay till next cycle XXX I didn't have the ctrl callback, maybe this isn't needed?
             }
             break;
         }
@@ -1156,7 +1167,7 @@ void spifi3_device::step(bool timeout)
                     function_bus_complete();
                 }
             }
-            else if(true) //c == CD_SELECT_ATN_STOP) // How to determine if this is the right thing to do? Seems like it for NetBSD at least. With autocmd/autoidentify, this probably waits until command length is 0.
+            else if(false) //c == CD_SELECT_ATN_STOP) // How to determine if we need to stop here?
             {
                 function_bus_complete();
             }
@@ -1282,7 +1293,15 @@ void spifi3_device::step(bool timeout)
                     }
 
                     // if it's the last message byte, ACK remains asserted, terminate with function_complete()
-                    state = (xfr_phase == S_PHASE_MSG_IN && (!dma_command || tcounter == 1)) ? INIT_XFR_RECV_BYTE_NACK : INIT_XFR_RECV_BYTE_ACK; // TODO: command equiv
+                    // However, if AUTOMSG is enabled, automatically accept the message by lowering ACK before continuing.
+                    if((xfr_phase == S_PHASE_MSG_IN && (!dma_command || tcounter == 1)))
+                    {
+                        state = (spifi_reg.cmlen & CML_AMSG_EN) ? INIT_XFR_RECV_BYTE_ACK_AUTOMSG : INIT_XFR_RECV_BYTE_NACK;
+                    }
+                    else
+                    {
+                        state = INIT_XFR_RECV_BYTE_ACK;
+                    }
 
                     xfrDataSource = FIFO;
                     recv_byte();
@@ -1383,11 +1402,29 @@ void spifi3_device::step(bool timeout)
             break;
         }
 
+        case INIT_XFR_RECV_BYTE_ACK_AUTOMSG:
+        {
+            // Bypass the rest of the state machine, because if we allow this to do another cycle,
+            // the bus will be free and the interrupts won't be set correctly.
+            // This would have gone to INIT_XFR_FUNCTION_COMPLETE otherwise.
+            if (dma_command && !transfer_count_zero() && !m_even_fifo.empty())
+            {
+                LOG("Data left to transfer, not marking function complete.\n");
+                break;
+            }
+            LOG("Clearing ACK and completing function because automsg is enabled!\n");
+            scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
+            function_complete();
+            step(false);
+            break;
+        }
+
         case INIT_XFR_FUNCTION_COMPLETE:
         {
             // wait for dma transfer to complete or fifo to drain
             if (dma_command && !transfer_count_zero() && !m_even_fifo.empty())
             {
+                LOG("Data left to transfer, not marking function complete.\n");
                 break;
             }
 
