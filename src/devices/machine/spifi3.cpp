@@ -70,15 +70,10 @@ void spifi3_device::device_start()
 
 void spifi3_device::map(address_map &map)
 {
-    static bool intrOccurred = false;
     // Ugly address map
     map(0x00, 0x03).lrw32(NAME([this]()
                                {
-                                   if(spifi_reg.intr > 0) // horrible, horrible hack to see wtf the mrom wants from me
-                                   {
-                                       intrOccurred = true;
-                                   }
-                                   uint32_t spstat = (intrOccurred ? (spifi_reg.spstat << 4 | SPS_INTR) : spifi_reg.spstat << 4); /*XXX ???*/
+                                   uint32_t spstat = spifi_reg.spstat << 4 | ((spifi_reg.intr > 0) ? SPS_INTR : 0);
                                    LOG("read spifi_reg.spstat = 0x%x\n", spstat);
                                    return spstat;
                                }),
@@ -569,8 +564,8 @@ void spifi3_device::check_irq()
 {
     // There are various ways interrupts can be triggered by the SPIFI - this method is a work in progress.
     bool irqState = (spifi_reg.intr & ~spifi_reg.imask) > 0; // ICOND plays a role here - need to determine how to make sure it is in sync
-
-    if(irq != irqState)
+    LOG("Checking IRQ state - is %d, going to %d\n", irq, irqState);
+    if (irq != irqState)
     {
         LOG("Setting IRQ line to %d\n", irqState);
         irq = irqState;
@@ -606,6 +601,7 @@ void spifi3_device::check_drq()
 
     if (drq_state != drq)
     {
+        LOG("DRQ changed to %d!\n", drq_state);
         drq = drq_state;
         m_drq_handler(drq);
     }
@@ -689,6 +685,7 @@ void spifi3_device::function_bus_complete()
 {
     LOG("function_bus_complete\n");
     state = IDLE;
+    spifi_reg.spstat = SPS_IDLE; // xxx
     // was: istatus |= I_FUNCTION|I_BUS;
     spifi_reg.intr |= INTR_FCOMP | INTR_BSRQ; // XXX icond? is BSRQ 1:1 w/ bus complete?
     dma_set(DMA_NONE);
@@ -700,6 +697,7 @@ void spifi3_device::function_complete()
 {
     LOG("function_complete\n");
     state = IDLE;
+    spifi_reg.spstat = SPS_IDLE; // xxx
     spifi_reg.intr |= INTR_FCOMP; // XXX icond?
     dma_set(DMA_NONE);
     check_drq();

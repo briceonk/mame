@@ -84,7 +84,7 @@ void dmac3_device::csr_w(DMAC3_Controller controller, uint32_t data)
 void dmac3_device::intr_w(DMAC3_Controller controller, uint32_t data)
 {
 	LOG("dmac3-%d intr_w: 0x%x\n", controller, data);
-	auto intr_clear_bits = ~data & INTR_CLR_MASK; // Get 1s on bits to clear XXX This might be wrong - NetBSD writes 1s to clear
+	auto intr_clear_bits = data & INTR_CLR_MASK; // Get 1s on bits to clear
 	auto intr_enable_bits = data & INTR_EN_MASK; // Get 1s on bits to set
 	m_controllers[controller].intr &= ~intr_clear_bits; // Clear requested interrupt flags
 	m_controllers[controller].intr &= ~INTR_EN_MASK;	// Clear all mask bits
