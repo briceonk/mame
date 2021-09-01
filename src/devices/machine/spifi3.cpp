@@ -314,7 +314,7 @@ void spifi3_device::fifoctrl_w(uint32_t data)
     if(spifi_reg.fifoctrl & FIFOC_RQOVRN) { LOG("fifoctrl.RQOVRN: w unimplemented"); } // likely RO - Whatever this is, it would cause NetBSD to panic
     if(spifi_reg.fifoctrl & FIFOC_CLREVEN)
     {
-        LOG("Clearing even FIFO of %d items", m_even_fifo.size());
+        LOG("Clearing even FIFO of %d items\n", m_even_fifo.size());
         while (!m_even_fifo.empty())
         {
             m_even_fifo.pop();
@@ -322,7 +322,7 @@ void spifi3_device::fifoctrl_w(uint32_t data)
     }
     if(spifi_reg.fifoctrl & FIFOC_CLRODD)
     {
-        LOG("Clearing odd FIFO of %d items", m_odd_fifo.size());
+        LOG("Clearing odd FIFO of %d items\n", m_odd_fifo.size());
         while (!m_odd_fifo.empty())
         {
             m_odd_fifo.pop();
@@ -330,6 +330,20 @@ void spifi3_device::fifoctrl_w(uint32_t data)
     }
     if(spifi_reg.fifoctrl & FIFOC_FLUSH) { LOG("fifoctrl.FLUSH: unimplemented"); } // flush FIFO - kick off DMA regardless of FIFO count, I assume
     if(spifi_reg.fifoctrl & FIFOC_LOAD) { LOG("fifoctrl.LOAD: unimplemented"); } // Load FIFO synchronously (only needed for SDTR mode?)
+}
+
+void spifi3_device::clear_fifo()
+{
+    LOG("Clearing even FIFO of %d items\n", m_even_fifo.size());
+    while (!m_even_fifo.empty())
+    {
+        m_even_fifo.pop();
+    }
+    LOG("Clearing odd FIFO of %d items\n", m_odd_fifo.size());
+    while (!m_odd_fifo.empty())
+    {
+        m_odd_fifo.pop();
+    }
 }
 
 void spifi3_device::select_w(uint32_t data)
@@ -675,6 +689,7 @@ void spifi3_device::send_byte()
 
 void spifi3_device::recv_byte()
 {
+    LOG("recv_byte started - state = %d.%d\n", state & STATE_MASK, (state & SUB_MASK) >> SUB_SHIFT);
     // Wait for valid input
     scsi_bus->ctrl_wait(scsi_refid, S_REQ, S_REQ);
     state = (state & STATE_MASK) | (RECV_WAIT_REQ_1 << SUB_SHIFT);
@@ -688,6 +703,7 @@ void spifi3_device::function_bus_complete()
     spifi_reg.spstat = SPS_IDLE; // xxx
     // was: istatus |= I_FUNCTION|I_BUS;
     spifi_reg.intr |= INTR_FCOMP | INTR_BSRQ; // XXX icond? is BSRQ 1:1 w/ bus complete?
+    spifi_reg.prcmd = 0; // XXX
     dma_set(DMA_NONE);
     check_drq();
     check_irq();
@@ -699,6 +715,7 @@ void spifi3_device::function_complete()
     state = IDLE;
     spifi_reg.spstat = SPS_IDLE; // xxx
     spifi_reg.intr |= INTR_FCOMP; // XXX icond?
+    spifi_reg.prcmd = 0; // XXX
     dma_set(DMA_NONE);
     check_drq();
     check_irq();
@@ -710,6 +727,7 @@ void spifi3_device::bus_complete()
     state = IDLE;
     // was: istatus |= I_BUS;
     spifi_reg.intr |= INTR_BSRQ; // XXX icond? is BSRQ 1:1 w/ bus complete?
+    spifi_reg.prcmd = 0; // XXX
     dma_set(DMA_NONE);
     check_drq();
     check_irq();
@@ -734,6 +752,10 @@ void spifi3_device::decrement_tcounter(int count)
     }
 
     tcounter -= count;
+    if(tcounter < 0)
+    {
+        tcounter = 0;
+    }
     if (tcounter == 0)
     {
         spifi_reg.icond |= ICOND_CNTZERO; // TODO: does this immediately trigger an interrupt? or is this just a status thing?
@@ -1083,12 +1105,14 @@ void spifi3_device::step(bool timeout)
             // Extract the command length from the cmlen register and reset our index into the command buffer if a command was given
             if(!(spifi_reg.prcmd & PRC_NJMP) && (spifi_reg.prcmd & PRC_COMMAND))
             {
+                LOG("Starting command - length = %d\n", spifi_reg.cmlen & CML_LENMASK);
                 command_length = spifi_reg.cmlen & CML_LENMASK;
                 command_pos = 0;
             }
             // Otherwise, we are here because the host enabled autoidentify, so CDB isn't the source of the command. Instead, we'll send identify
             else
             {
+                LOG("Starting autoidentify...\n");
                 command_pos = -1; // XXX THIS IS TEMPORARY
             }
             state = DISC_SEL_ARBITRATION;
@@ -1156,6 +1180,7 @@ void spifi3_device::step(bool timeout)
                 command_pos = 0;
                 if(spifi_reg.cmlen & CML_ACOM_EN)
                 {
+                    LOG("Select complete, autocmd enabled so moving on to XFR phase!");
                     scsi_bus->ctrl_w(scsi_refid, 0, S_ACK); // XXX Deassert ACK - just trying this out
                     state = INIT_XFR;
                     xfr_phase = scsi_bus->ctrl_r() & S_PHASE_MASK; // XXX is this OK??
@@ -1192,7 +1217,7 @@ void spifi3_device::step(bool timeout)
             }
 
             state = DISC_SEL_SEND_BYTE;
-            send_byte();
+            send_cmd_byte();
             break;
         }
 
@@ -1415,6 +1440,9 @@ void spifi3_device::step(bool timeout)
             LOG("Clearing ACK and completing function because automsg is enabled!\n");
             scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
             function_complete();
+
+            // Dump message info out of the fifo
+            clear_fifo();
             step(false);
             break;
         }

@@ -253,6 +253,7 @@ private:
     void delay(int cycles);
     void delay_cycles(int cycles);
     void arbitrate();
+    void clear_fifo();
 
     // AUXCTRL constants and functions
     const uint32_t AUXCTRL_DMAEDGE = 0x04;
