@@ -413,6 +413,22 @@ void spifi3_device::prcmd_w(uint32_t data)
             step(false);
             break;
         }
+        case PRC_TRPAD:
+        {
+            LOG("Transfer pad\n");
+            xfr_phase = scsi_bus->ctrl_r() & S_PHASE_MASK;
+            if(xfr_phase & S_INP)
+            {
+                state = INIT_XFR_RECV_PAD_WAIT_REQ;
+            }
+            else
+            {
+                state = INIT_XFR_SEND_PAD_WAIT_REQ;
+            }
+            scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
+            step(false);
+            break;
+        }
         case PRC_MSGIN:
         {
             LOG("Got MSGIN command! Starting message input phase...\n");
@@ -797,6 +813,7 @@ void spifi3_device::dma_w(uint8_t val)
 
 uint8_t spifi3_device::dma_r()
 {
+    LOG("dma_r called! Fifo count = %d, state = %d.%d, tcounter = %d\n", m_even_fifo.size(), state & STATE_MASK, (state & SUB_MASK) >> SUB_SHIFT, tcounter);
     uint8_t val = m_even_fifo.front();
     m_even_fifo.pop();
     decrement_tcounter();
@@ -1184,7 +1201,6 @@ void spifi3_device::step(bool timeout)
                     scsi_bus->ctrl_w(scsi_refid, 0, S_ACK); // XXX Deassert ACK - just trying this out
                     state = INIT_XFR;
                     xfr_phase = scsi_bus->ctrl_r() & S_PHASE_MASK; // XXX is this OK??
-                    check_drq(); // XXX needed?
                     step(false); // XXX delay needed?
                 }
                 else

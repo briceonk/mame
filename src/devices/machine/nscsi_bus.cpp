@@ -10,8 +10,8 @@
 #define LOG_DATA        (1U << 4)
 #define LOG_DATA_SENT   (1U << 5)
 
-//#define VERBOSE (LOG_GENERAL | LOG_STATE | LOG_CONTROL | LOG_DATA)
-#define VERBOSE (LOG_UNSUPPORTED)
+#define VERBOSE (LOG_GENERAL | LOG_STATE | LOG_CONTROL | LOG_DATA | LOG_DATA_SENT)
+//#define VERBOSE (LOG_UNSUPPORTED)
 
 #include "logmacro.h"
 
@@ -346,6 +346,7 @@ void nscsi_full_device::step(bool timeout)
 
 	case SEND_BYTE_T_WAIT_ACK_1 << SUB_SHIFT:
 		if(ctrl & S_ACK) {
+			LOG("ACK!\n");
 			scsi_state = (scsi_state & STATE_MASK) | (SEND_BYTE_T_WAIT_ACK_0 << SUB_SHIFT);
 			scsi_bus->data_w(scsi_refid, 0);
 			scsi_bus->ctrl_w(scsi_refid, 0, S_REQ);
@@ -354,6 +355,7 @@ void nscsi_full_device::step(bool timeout)
 
 	case SEND_BYTE_T_WAIT_ACK_0 << SUB_SHIFT:
 		if(!(ctrl & S_ACK)) {
+			LOG("NACK!\n");
 			scsi_state &= STATE_MASK;
 			scsi_bus->ctrl_wait(scsi_refid, 0, S_ACK);
 			step(false);
@@ -362,7 +364,9 @@ void nscsi_full_device::step(bool timeout)
 
 	case TARGET_NEXT_CONTROL: {
 		control *ctl = buf_control_pop();
-		switch(ctl->action) {
+		LOG("Executing hd command %d\n", ctl->action);
+		switch (ctl->action)
+		{
 		case BC_MSG_OR_COMMAND:
 			data_buffer_id = SBUF_MAIN;
 			data_buffer_pos = 0;

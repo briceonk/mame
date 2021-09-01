@@ -65,7 +65,7 @@ public:
 
     template <DMAC3_Controller controller> void drq_w(int state)
     {
-        m_controllers[controller].drq = state != 0;
+        m_controllers[controller].drq = (state != 0);
         m_dma_check->adjust(attotime::zero);
     }
 
