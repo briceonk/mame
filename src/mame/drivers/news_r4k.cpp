@@ -148,7 +148,7 @@
 #define NEWS_R4K_TRACE (NEWS_R4K_DEBUG | LOG_ALL_INTERRUPT | LOG_APBUS)
 #define NEWS_R4K_MAX (NEWS_R4K_TRACE | LOG_MEMORY)
 
-#define VERBOSE NEWS_R4K_INFO
+#define VERBOSE NEWS_R4K_DEBUG
 
 #include "logmacro.h"
 
@@ -510,7 +510,11 @@ void news_r4k_state::machine_common(machine_config &config)
                                                                         LOG("ESCC data recieved: 0x%x\n", data);
                                                                         m_escc->da_w(0, data);
                                                                     });
-    m_fifo1->out_int_callback().set(FUNC(news_r4k_state::irq_w<irq1_number::ESCC>)); // XXX
+    // INTEN0 = 3f1f
+    // INTEN1 = 3faf
+    // INTEN4 = 7
+    // INTEN5 = 7
+    m_fifo1->out_int_callback().set([this](int status){ generic_irq_w(1, 0x50, status); }); // XXX
 
     // SONIC + WSC-SONIC3 ethernet controller
     CXD8452AQ(config, m_sonic3, 0);

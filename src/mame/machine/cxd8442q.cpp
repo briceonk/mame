@@ -25,7 +25,7 @@
 DEFINE_DEVICE_TYPE(CXD8442Q, cxd8442q_device, "cxd8442q", "Sony CXD8442Q WSC-FIFOQ")
 
 cxd8442q_device::cxd8442q_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) : device_t(mconfig, CXD8442Q, tag, owner, clock), out_irq(*this),
-                                                                                                                    fifo_channels{fifo_channel(*this), fifo_channel(*this), fifo_channel(*this), fifo_channel(*this)}
+                                                                                                                    fifo_channels{apfifo_channel(*this), apfifo_channel(*this), apfifo_channel(*this), apfifo_channel(*this)}
 {
 }
 
@@ -60,7 +60,7 @@ void cxd8442q_device::map(address_map &map)
                                                                   {
                                                                       LOG("FIFO CH%d: Setting DMA mode to 0x%x\n", channel, data);
                                                                       fifo_channels[channel].dma_mode = data;
-                                                                      if (data & fifo_channel::DMA_EN)
+                                                                      if (data & apfifo_channel::DMA_EN)
                                                                       {
                                                                           fifo_channels[channel].reset_for_transaction();
                                                                           fifo_timer->adjust(attotime::zero, 0, attotime::from_usec(DMA_TIMER));
@@ -112,10 +112,10 @@ TIMER_CALLBACK_MEMBER(cxd8442q_device::fifo_dma_execute)
     bool dma_active = false;
     for (int channel = 0; channel < FIFO_CH_TOTAL; ++channel)
     {
-        fifo_channel &thisChannel = fifo_channels[channel];
+        apfifo_channel &thisChannel = fifo_channels[channel];
 
         // Skip this channel if we don't need to do anything
-        if (!(thisChannel.dma_mode & fifo_channel::DMA_EN))
+        if (!(thisChannel.dma_mode & apfifo_channel::DMA_EN))
         {
             continue;
         }
@@ -136,7 +136,7 @@ TIMER_CALLBACK_MEMBER(cxd8442q_device::fifo_dma_execute)
     }
 }
 
-void cxd8442q_device::fifo_channel::dma_cycle()
+void apfifo_channel::dma_cycle()
 {
     // TODO: Error handling (FIFO overrun, etc)
     if (dma_r_callback != nullptr && (dma_mode & (DMA_DIRECTION | DMA_EN)) == DMA_EN)
@@ -186,7 +186,7 @@ void cxd8442q_device::irq_check()
     bool irqState = false;
     for (int channel = 0; channel < FIFO_CH_TOTAL; ++channel)
     {
-        fifo_channel &thisChannel = fifo_channels[channel];
+        apfifo_channel &thisChannel = fifo_channels[channel];
         if(thisChannel.intstat != 0)
         {
             irqState = true;
@@ -195,7 +195,7 @@ void cxd8442q_device::irq_check()
     out_irq(irqState);
 }
 
-uint32_t cxd8442q_device::fifo_channel::read_data_from_fifo()
+uint32_t apfifo_channel::read_data_from_fifo()
 {
     // read data out of RAM at the current read position (relative to the start address)
     uint32_t value = fifo_device.fifo_ram[address + fifo_r_position];
@@ -215,7 +215,7 @@ uint32_t cxd8442q_device::fifo_channel::read_data_from_fifo()
     return (value << 24) | (value << 16) | (value << 8) | value;
 }
 
-void cxd8442q_device::fifo_channel::write_data_to_fifo(uint32_t data)
+void apfifo_channel::write_data_to_fifo(uint32_t data)
 {
     fifo_device.fifo_ram[address + fifo_w_position] = data;
 
@@ -224,4 +224,10 @@ void cxd8442q_device::fifo_channel::write_data_to_fifo(uint32_t data)
     {
         fifo_w_position = 0;
     }
+}
+
+void apfifo_channel::drq_w(int state)
+{
+    fifo_device.fifo_timer->adjust(attotime::zero, 0, attotime::from_usec(fifo_device.DMA_TIMER));
+    drq = state != 0;
 }
