@@ -1407,8 +1407,12 @@ void z80scc_channel::update_rts()
 					set_rts(!m_rts);
 		}
 
-		// data terminal ready output follows the state programmed into the DTR bit*/
-		set_dtr((m_wr5 & WR5_DTR) ? 0 : 1);
+		// data terminal ready output follows the state programmed into the DTR bit
+		// unless configured to use the DTR pin as the transmit REQ pin for DMA
+		if(!(m_wr14 & WR14_DTR_REQ_FUNC))
+		{
+			set_dtr((m_wr5 & WR5_DTR) ? 0 : 1);
+		}
 }
 
 //-------------------------------------------------
@@ -3013,5 +3017,14 @@ void z80scc_channel::check_waitrequest()
 	{
 		// assert /W//REQ if transmit buffer is empty and transmitter is enabled
 		m_uart->m_out_wreq_cb[m_index](((m_rr0 & RR0_TX_BUFFER_EMPTY) && (m_wr5 & WR5_TX_ENABLE)) ? 0 : 1);
+	}
+
+	// if DTR/REQ is enabled for transmit instead
+	// (usually so WREQ_ON_RX_TX can be used, see the Sony NWS-5000X driver for an example)
+	if (m_wr14 & WR14_DTR_REQ_FUNC)
+	{
+		// Datasheet claims that this doesn't depend on TX enable, but follow WREQ for now
+		// TODO: WR7' can influence this behavior but I don't understand that yet :)
+		set_dtr(((m_rr0 & RR0_TX_BUFFER_EMPTY) && (m_wr5 & WR5_TX_ENABLE)) ? 0 : 1);
 	}
 }
