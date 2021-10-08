@@ -448,8 +448,8 @@ void news_r4k_state::machine_common(machine_config &config)
     // Note - FDC IRQ probably goes through the FIFO first. Might need to be updated in the future.
     m_fdc->intrq_wr_callback().set(FUNC(news_r4k_state::irq_w<irq0_number::FDC>));
     m_fdc->drq_wr_callback().set([this](int status)
-                                 { m_fifo0->drq_w<cxd8442q_device::FifoChannelNumber::CH2>(status); });
-    m_fifo0->bind_dma_r<cxd8442q_device::FifoChannelNumber::CH2>([this]()
+                                 { m_fifo0->drq_w<cxd8442q_device::fifo_channel_number::CH2>(status); });
+    m_fifo0->bind_dma_r<cxd8442q_device::fifo_channel_number::CH2>([this]()
                                                                  { return (uint32_t)(m_fdc->dma_r()); });
 
     // DMA controller
