@@ -110,6 +110,7 @@ baud rate:
 #define LOG_DCD     (1U <<  8)
 #define LOG_SYNC    (1U <<  9)
 
+// #define VERBOSE LOG_GENERAL
 //#define VERBOSE (LOG_GENERAL|LOG_SETUP|LOG_READ|LOG_INT|LOG_CMD|LOG_TX|LOG_RCV|LOG_CTS|LOG_DCD|LOG_SYNC)
 //#define LOG_OUTPUT_STREAM std::cout
 
@@ -3009,8 +3010,8 @@ void z80scc_channel::check_waitrequest()
 		return;
 
 	// wait/request function for receive not implemented
-	if (m_wr1 & WR1_WREQ_ON_RX_TX)
-		return;
+	//if (m_wr1 & WR1_WREQ_ON_RX_TX)
+	//	return;
 
 	// if dma request function is enabled
 	if (m_wr1 & WR1_WREQ_FUNCTION)

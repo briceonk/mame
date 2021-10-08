@@ -24,13 +24,14 @@
 
 DEFINE_DEVICE_TYPE(CXD8442Q, cxd8442q_device, "cxd8442q", "Sony CXD8442Q WSC-FIFOQ")
 
-cxd8442q_device::cxd8442q_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) : device_t(mconfig, CXD8442Q, tag, owner, clock),
+cxd8442q_device::cxd8442q_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) : device_t(mconfig, CXD8442Q, tag, owner, clock), out_irq(*this),
                                                                                                                     fifo_channels{fifo_channel(*this), fifo_channel(*this), fifo_channel(*this), fifo_channel(*this)}
 {
 }
 
 void cxd8442q_device::map(address_map &map)
 {
+    map.unmap_value_low();
     // Each channel has the same structure
     // The devices are mapped at the platform level, so this device only needs to handle the DMA and assorted details
     for (int channel = 0; channel < FIFO_CH_TOTAL; ++channel)
@@ -69,20 +70,24 @@ void cxd8442q_device::map(address_map &map)
         map(channel_base + 0x30, channel_base + 0x33).lr32(NAME(([this, channel]()
                                                                  { return fifo_channels[channel].valid_count; })));
 
-        map(channel_base + 0x34, channel_base + 0x37).lrw32(NAME(([this, channel]()
-                                                                  { return fifo_channels[channel].read_data_from_fifo(); })),
-                                                            NAME(([this, channel](uint32_t data)
-                                                                  {
-                                                                      LOG("FIFO CH%d: Pushing 0x%x\n", channel, data);
-                                                                      fifo_channels[channel].write_data_to_fifo(data);
-                                                                  })));
+        map(channel_base + 0x34, channel_base + 0x37).lrw8(NAME(([this, channel]()
+                                                                 { return fifo_channels[channel].read_data_from_fifo(); })),
+                                                           NAME(([this, channel](offs_t offset, uint8_t data)
+                                                                 {
+                                                                     fifo_channels[channel].valid_count++; // TODO: move to write_data_to_fifo
+                                                                     LOG("FIFO CH%d: Pushing 0x%x, new count = 0x%x\n", channel, data, fifo_channels[channel].valid_count);
+                                                                     fifo_channels[channel].write_data_to_fifo(data);
+                                                                 })));
     }
+}
 
+void cxd8442q_device::map_fifo_ram(address_map &map)
+{
     // TODO: experiment to see if this is readable/writeable from the real NWS5000X
-    map(FIFO_RAM_OFFSET, FIFO_RAM_OFFSET + FIFO_MAX_RAM_SIZE - 1).lrw32(NAME(([this](offs_t offset)
-                                                                              { return fifo_ram[offset]; })),
-                                                                        NAME(([this](offs_t offset, uint32_t data)
-                                                                              { fifo_ram[offset] = data; })));
+    map(0x0, FIFO_MAX_RAM_SIZE - 1).lrw32(NAME(([this](offs_t offset)
+                                                { return fifo_ram[offset]; })),
+                                          NAME(([this](offs_t offset, uint32_t data)
+                                                { fifo_ram[offset] = data; })));
 }
 
 void cxd8442q_device::device_add_mconfig(machine_config &config) {}
@@ -104,7 +109,6 @@ void cxd8442q_device::device_reset()
 
 TIMER_CALLBACK_MEMBER(cxd8442q_device::fifo_dma_execute)
 {
-    // TODO: mem->device
     bool dma_active = false;
     for (int channel = 0; channel < FIFO_CH_TOTAL; ++channel)
     {
@@ -122,13 +126,6 @@ TIMER_CALLBACK_MEMBER(cxd8442q_device::fifo_dma_execute)
         {
             // TODO: error condition?
             thisChannel.dma_cycle();
-        }
-
-        // Check if we have maxed out what the CPU configured as the FIFO size
-        if (thisChannel.mask == thisChannel.valid_count)
-        {
-            // TODO: do we need to signal something to the CPU? Interrupt, etc?
-            thisChannel.dma_mode = 0x0; // Best-guess, not sure yet how to determine behavior on a real system
         }
     }
 
@@ -153,8 +150,15 @@ void cxd8442q_device::fifo_channel::dma_cycle()
         {
             fifo_w_position = 0;
         }
+
+        // Check if we have maxed out what the CPU configured as the FIFO size
+        if (mask == valid_count)
+        {
+            // TODO: do we need to signal something to the CPU? Interrupt, etc?
+            dma_mode = 0x0; // Best-guess, not sure yet how to determine behavior on a real system
+        }
     }
-    else if (dma_w_callback != nullptr && (dma_mode & (DMA_DIRECTION | DMA_EN)) == (DMA_DIRECTION | DMA_EN))
+    else if ((dma_w_callback != nullptr) && (valid_count > 0) && ((dma_mode & (DMA_DIRECTION | DMA_EN)) == (DMA_DIRECTION | DMA_EN)))
     {
         std::cout << "apfifo mem->dev fifoptr: " << address + fifo_r_position << " fifo_r_position: " << fifo_r_position << std::endl;
         // Move our next chunk of data from memory to the device
@@ -166,7 +170,29 @@ void cxd8442q_device::fifo_channel::dma_cycle()
         {
             fifo_r_position = 0;
         }
+
+        // Check if we are done
+        if (valid_count == 0)
+        {
+            dma_mode = 0x0; // XXX
+            intstat = 1;
+            fifo_device.irq_check();
+        }
     }
+}
+
+void cxd8442q_device::irq_check()
+{
+    bool irqState = false;
+    for (int channel = 0; channel < FIFO_CH_TOTAL; ++channel)
+    {
+        fifo_channel &thisChannel = fifo_channels[channel];
+        if(thisChannel.intstat != 0)
+        {
+            irqState = true;
+        }
+    }
+    out_irq(irqState);
 }
 
 uint32_t cxd8442q_device::fifo_channel::read_data_from_fifo()

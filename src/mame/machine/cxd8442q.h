@@ -33,6 +33,9 @@ public:
     cxd8442q_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
     void map(address_map &map);
+    void map_fifo_ram(address_map &map);
+
+    auto out_int_callback() { return out_irq.bind(); }
 
     // FIFO channels
     enum fifo_channel_number
@@ -40,7 +43,7 @@ public:
         CH0 = 0,
         CH1 = 1,
         CH2 = 2,
-        CH3 = 4
+        CH3 = 3
     };
 
     static const int FIFO_CH_TOTAL = 4;
@@ -64,6 +67,12 @@ protected:
     static const int DMA_TIMER = 1;
     emu_timer *fifo_timer;
     TIMER_CALLBACK_MEMBER(fifo_dma_execute);
+
+    // Interrupts
+    //bool irq_state = false;
+    devcb_write_line out_irq;
+    void device_resolve_objects() override { out_irq.resolve_safe(); }
+    void irq_check();
 
     // device_t overrides
     virtual void device_start() override;
@@ -139,6 +148,8 @@ protected:
 
         void drq_w(int state)
         {
+            std::cout << "DRQ is now " << state << "!" << std::endl;
+            fifo_device.fifo_timer->adjust(attotime::zero, 0, attotime::from_usec(DMA_TIMER));
             drq = state != 0;
         }
 
