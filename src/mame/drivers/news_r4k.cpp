@@ -97,7 +97,7 @@
  *
  *  TODO before opening first MR:
  *  - FIFO and ESCC cleanup (lots of it!)
- *  - SPIFI3 refactoring
+ *  - SPIFI3 refactoring (actual AUTOSTAT too)
  *  - CD-ROM access if possible
  *  - See if NEWS-OS 4 can be stabilized further (telnet, etc.)
  *  - Find better workaround for SCACHE enumeration
@@ -1307,6 +1307,7 @@ PORT_DIPSETTING(0x10, "Auto Boot Enable")
 PORT_DIPNAME(0x20, 0x00, "Run Diagnostic Test") PORT_DIPLOCATION("FRONT_PANEL:6")
 PORT_DIPSETTING(0x00, "No Diagnostic Test")
 PORT_DIPSETTING(0x20, "Run Diagnostic Test")
+// This default is actually 0, but the external slots aren't emulated.
 PORT_DIPNAME(0x40, 0x40, "External APbus Slot Probe Disable") PORT_DIPLOCATION("FRONT_PANEL:7")
 PORT_DIPSETTING(0x00, "Enable External Slot Probe")
 PORT_DIPSETTING(0x40, "Disable External Slot Probe")
