@@ -305,6 +305,8 @@ protected:
     bool m_int_state[6] = {false, false, false, false, false, false};
     uint32_t m_inten[6] = {0, 0, 0, 0, 0, 0};
     uint32_t m_intst[6] = {0, 0, 0, 0, 0, 0};
+    uint32_t escc1_int_status = 0;
+    uint32_t escc1_int_mask = 0;
 
     // Freerun timer (1us period)
     // NetBSD source code corroborates the period (https://github.com/NetBSD/src/blob/229cf3aa2cda57ba5f0c244a75ae83090e59c716/sys/arch/newsmips/newsmips/news5000.c#L259)
@@ -501,7 +503,7 @@ void news_r4k_state::machine_common(machine_config &config)
     // truly a love story for the ages
     m_escc->out_dtra_callback().set([this](int status)
                                             {
-                                                LOG("DTR/REQ changed to 0x%x\n", status);
+                                                // LOG("DTR/REQ changed to 0x%x\n", status);
                                                 // Reverse polarity for DRQ active
                                                 m_fifo1->drq_w<cxd8442q_device::fifo_channel_number::CH2>(!status);
                                             });
@@ -514,7 +516,11 @@ void news_r4k_state::machine_common(machine_config &config)
     // INTEN1 = 3faf
     // INTEN4 = 7
     // INTEN5 = 7
-    m_fifo1->out_int_callback().set([this](int status){ generic_irq_w(1, 0x50, status); }); // XXX
+    m_fifo1->out_int_callback().set([this](int status)
+                                    {
+                                        generic_irq_w(0, 0x4, status); // total guess
+                                        escc1_int_status = status ? 0x8 : 0x0; // was; 0x20
+                                    });                                        // XXX
 
     // SONIC + WSC-SONIC3 ethernet controller
     CXD8452AQ(config, m_sonic3, 0);
@@ -658,6 +664,26 @@ void news_r4k_state::cpu_map(address_map &map)
     //map(0x1e980000, 0x1e98ffff).m(m_fifo1, FUNC(cxd8442q_device::map_fifo_ram)); seems to be covered by bootstrap RAM? Or does bootstrap use the FIFO RAM??
     map(0x1e940000, 0x1e94000f).rw(FUNC(news_r4k_state::escc_ch_read<CHB>), FUNC(news_r4k_state::escc_ch_write<CHB>));
     map(0x1e950000, 0x1e95000f).rw(FUNC(news_r4k_state::escc_ch_read<CHA>), FUNC(news_r4k_state::escc_ch_write<CHA>));
+    map(0x1e960000, 0x1e960003).lrw32(NAME([this](offs_t offset)
+                                           {
+                                               LOG("Read ESCC1 int status 0x%x (%s)\n", escc1_int_status, machine().describe_context());
+                                               return escc1_int_status;
+                                           }),
+                                      NAME([this](offs_t offset, uint32_t data)
+                                           {
+                                               LOG("Clear ESCC1 int status (%s)\n", machine().describe_context());
+                                               escc1_int_status = 0; // assume clear for now
+                                           }));
+    map(0x1e960004, 0x1e960007).lrw32(NAME([this](offs_t offset)
+                                           {
+                                               LOG("Read ESCC1 int mask 0x%x (%s)\n", escc1_int_mask, machine().describe_context());
+                                               return escc1_int_mask;
+                                           }),
+                                      NAME([this](offs_t offset, uint32_t data)
+                                           {
+                                               LOG("Set ESCC1 int mask 0x%x (%s)\n", data, machine().describe_context());
+                                               escc1_int_mask = data;
+                                           }));
 
     // SONIC3 APbus interface and SONIC ethernet controller
     map(0x1e500000, 0x1e50003f).m(m_sonic3, FUNC(cxd8452aq_device::map));
@@ -1266,7 +1292,7 @@ PORT_DIPSETTING(0x10, "Auto Boot Enable")
 PORT_DIPNAME(0x20, 0x00, "Run Diagnostic Test") PORT_DIPLOCATION("FRONT_PANEL:6")
 PORT_DIPSETTING(0x00, "No Diagnostic Test")
 PORT_DIPSETTING(0x20, "Run Diagnostic Test")
-PORT_DIPNAME(0x40, 0x00, "External APbus Slot Probe Disable") PORT_DIPLOCATION("FRONT_PANEL:7")
+PORT_DIPNAME(0x40, 0x40, "External APbus Slot Probe Disable") PORT_DIPLOCATION("FRONT_PANEL:7")
 PORT_DIPSETTING(0x00, "Enable External Slot Probe")
 PORT_DIPSETTING(0x40, "Disable External Slot Probe")
 PORT_DIPNAME(0x80, 0x00, "No Memory Mode") PORT_DIPLOCATION("FRONT_PANEL:8")

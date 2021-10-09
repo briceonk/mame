@@ -58,14 +58,30 @@ void cxd8442q_device::map(address_map &map)
                                                                   { return fifo_channels[channel].dma_mode; })),
                                                             NAME(([this, channel](uint32_t data)
                                                                   {
-                                                                      LOG("FIFO CH%d: Setting DMA mode to 0x%x\n", channel, data);
+                                                                      LOG("FIFO CH%d: Setting DMA mode to 0x%x (%s)\n", channel, data, machine().describe_context());
                                                                       fifo_channels[channel].dma_mode = data;
                                                                       if (data & apfifo_channel::DMA_EN)
                                                                       {
                                                                           fifo_channels[channel].reset_for_transaction();
                                                                           fifo_timer->adjust(attotime::zero, 0, attotime::from_usec(DMA_TIMER));
                                                                       }
+                                                                      else
+                                                                      {
+                                                                          fifo_channels[channel].intstat = 0x0; // XXX
+                                                                      }
                                                                   })));
+
+        map(channel_base + 0x18, channel_base + 0x1b).lrw32(NAME(([this, channel]()
+                                                                  { return fifo_channels[channel].intctrl; })),
+                                                            NAME(([this, channel](offs_t offset, uint32_t data)
+                                                                  {
+                                                                      LOG("FIFO CH%d: Set intctrl = 0x%x (%s)\n", channel, data, machine().describe_context());
+                                                                      fifo_channels[channel].intctrl = data;
+                                                                      irq_check();
+                                                                  })));
+
+        map(channel_base + 0x1c, channel_base + 0x1f).lr32(NAME(([this, channel]()
+                                                                 { return fifo_channels[channel].intstat; })));
 
         map(channel_base + 0x30, channel_base + 0x33).lr32(NAME(([this, channel]()
                                                                  { return fifo_channels[channel].valid_count; })));
@@ -75,7 +91,7 @@ void cxd8442q_device::map(address_map &map)
                                                            NAME(([this, channel](offs_t offset, uint8_t data)
                                                                  {
                                                                      fifo_channels[channel].valid_count++; // TODO: move to write_data_to_fifo
-                                                                     LOG("FIFO CH%d: Pushing 0x%x, new count = 0x%x\n", channel, data, fifo_channels[channel].valid_count);
+                                                                     LOG("FIFO CH%d: Pushing 0x%x, new count = 0x%x (%s)\n", channel, data, fifo_channels[channel].valid_count, machine().describe_context());
                                                                      fifo_channels[channel].write_data_to_fifo(data);
                                                                  })));
     }
@@ -119,13 +135,19 @@ TIMER_CALLBACK_MEMBER(cxd8442q_device::fifo_dma_execute)
         {
             continue;
         }
-        dma_active = true;
 
         // Check DRQ to see if the device is ready to give or receive data
         if (thisChannel.drq_r())
         {
             // TODO: error condition?
-            thisChannel.dma_cycle();
+            if(thisChannel.dma_cycle())
+            {
+                dma_active = true;
+            }
+        }
+        else
+        {
+            dma_active = true;
         }
     }
 
@@ -136,9 +158,10 @@ TIMER_CALLBACK_MEMBER(cxd8442q_device::fifo_dma_execute)
     }
 }
 
-void apfifo_channel::dma_cycle()
+bool apfifo_channel::dma_cycle()
 {
     // TODO: Error handling (FIFO overrun, etc)
+    bool stay_active = true;
     if (dma_r_callback != nullptr && (dma_mode & (DMA_DIRECTION | DMA_EN)) == DMA_EN)
     {
         // Grab our next chunk of data (might just be a byte, needs more investigation)
@@ -155,12 +178,13 @@ void apfifo_channel::dma_cycle()
         if (mask == valid_count)
         {
             // TODO: do we need to signal something to the CPU? Interrupt, etc?
-            dma_mode = 0x0; // Best-guess, not sure yet how to determine behavior on a real system
+            stay_active = false;
+            dma_mode = 0x0; // This is likely wrong
         }
     }
     else if ((dma_w_callback != nullptr) && (valid_count > 0) && ((dma_mode & (DMA_DIRECTION | DMA_EN)) == (DMA_DIRECTION | DMA_EN)))
     {
-        std::cout << "apfifo mem->dev fifoptr: " << address + fifo_r_position << " fifo_r_position: " << fifo_r_position << std::endl;
+        LOG("apfifo mem->dev fifoptr: 0x%x fifo_r_position: 0x%x\n", address + fifo_r_position, fifo_r_position);
         // Move our next chunk of data from memory to the device
         dma_w_callback(fifo_device.fifo_ram[address + fifo_r_position]);
         --valid_count;
@@ -174,11 +198,13 @@ void apfifo_channel::dma_cycle()
         // Check if we are done
         if (valid_count == 0)
         {
-            dma_mode = 0x0; // XXX
-            intstat = 1;
+            stay_active = false;
+            intstat = 3;
             fifo_device.irq_check();
         }
     }
+
+    return stay_active;
 }
 
 void cxd8442q_device::irq_check()
@@ -187,7 +213,8 @@ void cxd8442q_device::irq_check()
     for (int channel = 0; channel < FIFO_CH_TOTAL; ++channel)
     {
         apfifo_channel &thisChannel = fifo_channels[channel];
-        if(thisChannel.intstat != 0)
+        auto mask = thisChannel.intctrl & 0x1;
+        if ((thisChannel.intstat & mask) != 0)
         {
             irqState = true;
         }

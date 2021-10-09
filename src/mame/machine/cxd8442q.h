@@ -81,7 +81,7 @@ public:
         fifo_r_position = 0;
     }
 
-    void dma_cycle();
+    bool dma_cycle();
 
     void set_dma_r_callback(std::function<uint32_t(void)> dma_r)
     {
