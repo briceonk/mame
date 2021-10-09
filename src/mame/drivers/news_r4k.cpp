@@ -94,9 +94,9 @@
  *  - Parallel I/O
  *  - Framebuffer (and remaining kb/ms support)
  *  - APbus expansion slots
- *  - ESCCF/FIFO DMA (Needs ESCC driver support for full duplex DMA first)
  *
  *  TODO before opening first MR:
+ *  - FIFO and ESCC cleanup (lots of it!)
  *  - SPIFI3 refactoring
  *  - CD-ROM access if possible
  *  - See if NEWS-OS 4 can be stabilized further (telnet, etc.)
@@ -507,18 +507,33 @@ void news_r4k_state::machine_common(machine_config &config)
                                                 // Reverse polarity for DRQ active
                                                 m_fifo1->drq_w<cxd8442q_device::fifo_channel_number::CH2>(!status);
                                             });
+    m_escc->out_wreqa_callback().set([this](int status)
+                                     {
+                                        LOG("WREQ changed to 0x%x\n", status);
+                                        m_fifo1->drq_w<cxd8442q_device::fifo_channel_number::CH3>(!status);
+                                     });
     m_fifo1->bind_dma_w<cxd8442q_device::fifo_channel_number::CH2>([this](uint32_t data)
-                                                                    {
-                                                                        LOG("ESCC data recieved: 0x%x\n", data);
-                                                                        m_escc->da_w(0, data);
-                                                                    });
+                                                                   {
+                                                                       LOG("Sent 0x%x to ESCC\n", data);
+                                                                       m_escc->da_w(0, data);
+                                                                   });
+    m_fifo1->bind_dma_r<cxd8442q_device::fifo_channel_number::CH3>([this]()
+                                                                   {
+                                                                       auto data = m_escc->da_r(0);
+                                                                       LOG("Got 0x%x from ESCC\n", data);
+                                                                       return data;
+                                                                   });
+
     // INTEN0 = 3f1f
     // INTEN1 = 3faf
     // INTEN4 = 7
     // INTEN5 = 7
     m_fifo1->out_int_callback().set([this](int status)
                                     {
-                                        generic_irq_w(0, 0x4, status); // total guess
+                                        // Not sure if this is the actual mapping, or if sending any level 0 interrupt causes
+                                        // NEWS-OS to scan the ESCC and FIFO registers. It seems to work OK, but should be
+                                        // revisited if the exact details can be worked out.
+                                        generic_irq_w(0, 0x4, status);
                                         escc1_int_status = status ? 0x8 : 0x0; // was; 0x20
                                     });                                        // XXX
 

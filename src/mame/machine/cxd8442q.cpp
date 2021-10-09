@@ -5,21 +5,28 @@
  * Sony CXD8442Q WSC-FIFOQ APbus FIFO and DMA controller
  *
  * The FIFOQ is an APbus DMA controller designed for interfacing some of the simpler and lower speed peripherals
- * to the APbus while providing DMA capabilities. Each FIFO chip can support up to 4 devices.
+ * to the APbus while providing DMA capabilities. Each FIFO chip can support up to 4 devices. There is no
+ * documentation avaliable for these chips (that I have been able to find, anyways), so this implements the bare minimum
+ * needed to satisfy the monitor ROM (for booting off of floppy drives) and NEWS-OS (for async serial communication).
+ * I'm sure there is a lot of missing or hardware inaccurate functionality here - this was all derived from running stuff 
+ * and observing the debugger/ emulator log files. Additionally, the way this is coded makes it interrupt pretty much whenever
+ * data is avaliable. The real hardware probably buffers this more.
  *
  * The NWS-5000X uses two of these chips to drive the following peripherals:
  *  - Floppy disk controller
  *  - Sound
- *  - ??? (more to come)
+ *  - Asynchronous serial communication
+ *  and potentially more.
  *
  * TODO:
+ *  - Cleanup
  *  - Hardware-accurate behavior of the FIFO - this is a best guess.
  *  - Actual clock rate
  */
 
 #include "cxd8442q.h"
 
-#define VERBOSE 1
+#define VERBOSE 0
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(CXD8442Q, cxd8442q_device, "cxd8442q", "Sony CXD8442Q WSC-FIFOQ")
@@ -84,16 +91,31 @@ void cxd8442q_device::map(address_map &map)
                                                                  { return fifo_channels[channel].intstat; })));
 
         map(channel_base + 0x30, channel_base + 0x33).lr32(NAME(([this, channel]()
-                                                                 { return fifo_channels[channel].valid_count; })));
+                                                                 { return fifo_channels[channel].count; })));
 
         map(channel_base + 0x34, channel_base + 0x37).lrw8(NAME(([this, channel]()
-                                                                 { return fifo_channels[channel].read_data_from_fifo(); })),
+                                                                 {
+                                                                     if(fifo_channels[channel].count > 0)
+                                                                     {
+                                                                        fifo_channels[channel].count--;
+                                                                        if(!fifo_channels[channel].count)
+                                                                        {
+                                                                            // time to clear interrupt if we got to 0
+                                                                            fifo_channels[channel].intstat &= ~0x3;
+                                                                        }
+                                                                     }
+                                                                     irq_check();
+                                                                     return fifo_channels[channel].read_data_from_fifo();
+                                                                 })),
                                                            NAME(([this, channel](offs_t offset, uint8_t data)
                                                                  {
-                                                                     fifo_channels[channel].valid_count++; // TODO: move to write_data_to_fifo
-                                                                     LOG("FIFO CH%d: Pushing 0x%x, new count = 0x%x (%s)\n", channel, data, fifo_channels[channel].valid_count, machine().describe_context());
+                                                                     fifo_channels[channel].count++; // TODO: move to write_data_to_fifo
+                                                                     LOG("FIFO CH%d: Pushing 0x%x, new count = 0x%x (%s)\n", channel, data, fifo_channels[channel].count, machine().describe_context());
                                                                      fifo_channels[channel].write_data_to_fifo(data);
                                                                  })));
+
+    // These locations are written to a lot but not emulating them doesn't stop it from working for simple cases
+    map(channel_base + 0x20, channel_base + 0x2f).noprw();
     }
 }
 
@@ -166,7 +188,7 @@ bool apfifo_channel::dma_cycle()
     {
         // Grab our next chunk of data (might just be a byte, needs more investigation)
         fifo_device.fifo_ram[address + fifo_w_position] = dma_r_callback();
-        ++valid_count;
+        ++count;
 
         // Increment and check if we need to wrap around
         if (++fifo_w_position > mask)
@@ -174,20 +196,14 @@ bool apfifo_channel::dma_cycle()
             fifo_w_position = 0;
         }
 
-        // Check if we have maxed out what the CPU configured as the FIFO size
-        if (mask == valid_count)
-        {
-            // TODO: do we need to signal something to the CPU? Interrupt, etc?
-            stay_active = false;
-            dma_mode = 0x0; // This is likely wrong
-        }
+        intstat = 3; // IRQ since we have data. This is likely not how the real chip works
+        fifo_device.irq_check();
     }
-    else if ((dma_w_callback != nullptr) && (valid_count > 0) && ((dma_mode & (DMA_DIRECTION | DMA_EN)) == (DMA_DIRECTION | DMA_EN)))
+    else if ((dma_w_callback != nullptr) && (count > 0) && ((dma_mode & (DMA_DIRECTION | DMA_EN)) == (DMA_DIRECTION | DMA_EN)))
     {
-        LOG("apfifo mem->dev fifoptr: 0x%x fifo_r_position: 0x%x\n", address + fifo_r_position, fifo_r_position);
         // Move our next chunk of data from memory to the device
         dma_w_callback(fifo_device.fifo_ram[address + fifo_r_position]);
-        --valid_count;
+        --count;
 
         // Decrement and check if we need to wrap around
         if (++fifo_r_position > mask)
@@ -196,7 +212,7 @@ bool apfifo_channel::dma_cycle()
         }
 
         // Check if we are done
-        if (valid_count == 0)
+        if (count == 0)
         {
             stay_active = false;
             intstat = 3;
@@ -255,6 +271,6 @@ void apfifo_channel::write_data_to_fifo(uint32_t data)
 
 void apfifo_channel::drq_w(int state)
 {
-    fifo_device.fifo_timer->adjust(attotime::zero, 0, attotime::from_usec(fifo_device.DMA_TIMER));
     drq = state != 0;
+    fifo_device.fifo_timer->adjust(attotime::zero, 0, attotime::from_usec(fifo_device.DMA_TIMER));
 }

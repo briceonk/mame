@@ -2458,6 +2458,9 @@ uint8_t z80scc_channel::data_read()
 				m_uart->check_interrupts();
 			}
 		}
+
+		// TODO: Datasheet mentions some special conditions related to WRQ on receive
+		check_waitrequest();
 	}
 	else
 	{
@@ -2635,6 +2638,7 @@ void z80scc_channel::receive_data(uint8_t data)
 	}
 
 	m_rr0 |= RR0_RX_CHAR_AVAILABLE;
+	check_waitrequest();
 
 	// receive interrupt on FIRST and ALL character
 	switch (m_wr1 & WR1_RX_INT_MODE_MASK)
@@ -3005,21 +3009,6 @@ void z80scc_channel::write_rx(int state)
  */
 void z80scc_channel::check_waitrequest()
 {
-	// don't do anything if wait/request function is not enabled
-	if ((m_wr1 & WR1_WREQ_ENABLE) == 0)
-		return;
-
-	// wait/request function for receive not implemented
-	//if (m_wr1 & WR1_WREQ_ON_RX_TX)
-	//	return;
-
-	// if dma request function is enabled
-	if (m_wr1 & WR1_WREQ_FUNCTION)
-	{
-		// assert /W//REQ if transmit buffer is empty and transmitter is enabled
-		m_uart->m_out_wreq_cb[m_index](((m_rr0 & RR0_TX_BUFFER_EMPTY) && (m_wr5 & WR5_TX_ENABLE)) ? 0 : 1);
-	}
-
 	// if DTR/REQ is enabled for transmit instead
 	// (usually so WREQ_ON_RX_TX can be used, see the Sony NWS-5000X driver for an example)
 	if (m_wr14 & WR14_DTR_REQ_FUNC)
@@ -3028,4 +3017,24 @@ void z80scc_channel::check_waitrequest()
 		// TODO: WR7' can influence this behavior but I don't understand that yet :)
 		set_dtr(((m_rr0 & RR0_TX_BUFFER_EMPTY) && (m_wr5 & WR5_TX_ENABLE)) ? 0 : 1);
 	}
+
+	// don't do anything if wait/request function is not enabled
+	if ((m_wr1 & WR1_WREQ_ENABLE) == 0)
+		return;
+
+	// wait/request function for receive
+	if (m_wr1 & WR1_WREQ_ON_RX_TX) // TODO: check WR1_WREQ_FUNCTION as well?
+	{
+		m_uart->m_out_wreq_cb[m_index](((m_rr0 & RR0_RX_CHAR_AVAILABLE) && (m_wr3 & WR3_RX_ENABLE)) ? 0 : 1);
+		return;
+	}
+
+	// if dma request function is enabled
+	if (m_wr1 & WR1_WREQ_FUNCTION)
+	{
+		// assert /W//REQ if transmit buffer is empty and transmitter is enabled
+		m_uart->m_out_wreq_cb[m_index](((m_rr0 & RR0_TX_BUFFER_EMPTY) && (m_wr5 & WR5_TX_ENABLE)) ? 0 : 1);
+	}
+
+
 }
