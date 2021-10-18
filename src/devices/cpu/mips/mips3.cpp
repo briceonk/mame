@@ -107,6 +107,7 @@ static const uint8_t fpmode_source[4] =
 DEFINE_DEVICE_TYPE(R4000BE,   r4000be_device,   "r4000be",   "MIPS R4000 (big)")
 DEFINE_DEVICE_TYPE(R4000LE,   r4000le_device,   "r4000le",   "MIPS R4000 (little)")
 DEFINE_DEVICE_TYPE(R4400BE,   r4400be_device,   "r4400be",   "MIPS R4400 (big)")
+DEFINE_DEVICE_TYPE(R4400SCBE,   r4400scbe_device,   "r4400scbe",   "MIPS R4400SC (big)")
 DEFINE_DEVICE_TYPE(R4400LE,   r4400le_device,   "r4400le",   "MIPS R4400 (little)")
 DEFINE_DEVICE_TYPE(VR4300BE,  vr4300be_device,  "vr4300be",  "NEC VR4300 (big)")
 DEFINE_DEVICE_TYPE(VR4300LE,  vr4300le_device,  "vr4300le",  "NEC VR4300 (little)")
@@ -5609,6 +5610,73 @@ void r5000be_device::handle_cache(uint32_t op)
 		break;
 	default:
 		logerror("%s: MIPS3: %08x specifies invalid cache type %d, vaddr %08x\n", machine().describe_context(), op, CACHE_TYPE, vaddr);
+		break;
+	}
+}
+
+void r4400scbe_device::set_scache_size(uint32_t size)
+{
+	scache_size = size;
+}
+
+void r4400scbe_device::device_start()
+{
+	if(scache_size < 1)
+	{
+		fatalerror("SCACHE size was not set!");
+	}
+
+	mips3_device::device_start();
+
+	m_scache = std::make_unique<uint8_t[]>(scache_size);
+	save_pointer(NAME(m_scache), scache_size);
+}
+
+
+void r4400scbe_device::handle_cache(uint32_t op)
+{
+	if ((SR & SR_KSU_MASK) != SR_KSU_KERNEL && !(SR & SR_COP0) && !(SR & (SR_EXL | SR_ERL)))
+	{
+		m_badcop_value = 0;
+		generate_exception(EXCEPTION_BADCOP, 1);
+		return;
+	}
+
+	const uint32_t vaddr = RSVAL32 + SIMMVAL;
+
+	switch (CACHE_TYPE)
+	{
+	case 3: // Secondary Cache
+		switch (CACHE_OP)
+		{
+		case 0:     // Cache Clear
+			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Cache Clear\n", machine().describe_context(), vaddr);
+			// std::cout << std::hex << machine().describe_context() << " cache clear vaddr " << std::hex << vaddr << std::endl;
+			break;
+		case 1:     // Index Load Tag
+			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Index Load Tag\n", machine().describe_context(), vaddr);
+			std::cout << std::hex << machine().describe_context() << " index load tag vaddr " << std::hex << vaddr << std::endl;
+			break;
+		case 2:     // Index Store Tag
+			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Index Store Tag\n", machine().describe_context(), vaddr);
+			std::cout << std::hex << machine().describe_context() << " index store tag vaddr " << std::hex << vaddr << std::endl;
+			break;
+		case 4:     // Hit Invalidate
+			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Hit Invalidate\n", machine().describe_context(), vaddr);
+			std::cout << std::hex << machine().describe_context() << " hit invalidate vaddr " << std::hex << vaddr << std::endl;
+			break;
+		case 5:     // Cache Page Invalidate
+			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Cache Page Invalidate\n", machine().describe_context(), vaddr);
+			std::cout << std::hex << machine().describe_context() << " page invalidate vaddr " << std::hex << vaddr << std::endl;
+			break;
+		default:
+			logerror("%s: MIPS3: %08x specifies invalid SC cache op %d, vaddr %08x\n", machine().describe_context(), op, CACHE_OP, vaddr);
+			std::cout << std::hex << machine().describe_context() << " invalid cache op " << std::hex << CACHE_OP << " vaddr " << std::hex << vaddr << std::endl;
+			break;
+		}
+		break;
+	default:
+		// Other cache operations are treated as a no-op for now
 		break;
 	}
 }
