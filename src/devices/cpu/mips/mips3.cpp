@@ -5628,8 +5628,37 @@ void r4400scbe_device::device_start()
 
 	mips3_device::device_start();
 
-	m_scache = std::make_unique<uint8_t[]>(scache_size);
-	save_pointer(NAME(m_scache), scache_size);
+	// MIPS-III secondary cache tag size depends on the cache line size
+	// (how many bytes are transferred with one cache operation) and the
+	// size of the cache itself.
+	// For example, the Sony NEWS NWS-5000X has a 1MB secondary cache
+	// and a cache line size of 16 words. So, the slice of the physical
+	// address used to index into the cache is bits 19:6.
+	// See chapter 11 of the R4000 user manual for more details.
+	if (c_secondary_cache_line_size != 0 && scache_size > 0)
+	{
+		if (c_secondary_cache_line_size <= 0x10)
+		{
+			scache_line_index = 4;
+		}
+		else if (c_secondary_cache_line_size <= 0x20)
+		{
+			scache_line_index = 5;
+		}
+		else if (c_secondary_cache_line_size <= 0x40)
+		{
+			scache_line_index = 6;
+		}
+		else
+		{
+			scache_line_index = 7;
+		}
+
+		uint32_t tag_size = scache_size >> scache_line_index;
+
+		m_scache_tag = std::make_unique<uint32_t[]>(tag_size);
+		save_pointer(NAME(m_scache_tag), tag_size);
+	}
 }
 
 
@@ -5642,41 +5671,70 @@ void r4400scbe_device::handle_cache(uint32_t op)
 		return;
 	}
 
-	const uint32_t vaddr = RSVAL32 + SIMMVAL;
-
-	switch (CACHE_TYPE)
+	if(c_secondary_cache_line_size != 0 && scache_size > 0)
 	{
-	case 3: // Secondary Cache
-		switch (CACHE_OP)
+		const uint32_t vaddr = RSVAL32 + SIMMVAL;
+
+		switch (CACHE_TYPE)
 		{
-		case 0:     // Cache Clear
-			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Cache Clear\n", machine().describe_context(), vaddr);
-			// std::cout << std::hex << machine().describe_context() << " cache clear vaddr " << std::hex << vaddr << std::endl;
-			break;
-		case 1:     // Index Load Tag
-			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Index Load Tag\n", machine().describe_context(), vaddr);
-			std::cout << std::hex << machine().describe_context() << " index load tag vaddr " << std::hex << vaddr << std::endl;
-			break;
-		case 2:     // Index Store Tag
-			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Index Store Tag\n", machine().describe_context(), vaddr);
-			std::cout << std::hex << machine().describe_context() << " index store tag vaddr " << std::hex << vaddr << std::endl;
-			break;
-		case 4:     // Hit Invalidate
-			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Hit Invalidate\n", machine().describe_context(), vaddr);
-			std::cout << std::hex << machine().describe_context() << " hit invalidate vaddr " << std::hex << vaddr << std::endl;
-			break;
-		case 5:     // Cache Page Invalidate
-			logerror("%s: MIPS3: Not yet implemented: cache: vaddr %08x, SC Cache Page Invalidate\n", machine().describe_context(), vaddr);
-			std::cout << std::hex << machine().describe_context() << " page invalidate vaddr " << std::hex << vaddr << std::endl;
-			break;
-		default:
-			logerror("%s: MIPS3: %08x specifies invalid SC cache op %d, vaddr %08x\n", machine().describe_context(), op, CACHE_OP, vaddr);
-			std::cout << std::hex << machine().describe_context() << " invalid cache op " << std::hex << CACHE_OP << " vaddr " << std::hex << vaddr << std::endl;
-			break;
+			case 3: // Secondary Cache
+				switch (CACHE_OP)
+				{
+					case 1:     // Index Load Tag
+					{
+						// Get physical address and use it to get the tag
+						const uint32_t tlbval = vtlb_table()[vaddr >> 12];
+						const uint32_t tlbaddress = (tlbval & ~0xfff) | (vaddr & 0xfff);
+						const uint32_t tag_mask = scache_size - 1;
+						const uint32_t index = (tlbaddress & tag_mask) >> scache_line_index;
+						auto tag = m_scache_tag[index];
+
+						auto cs = (tag & 0x1c00000) >> 22;
+						auto stag = (tag & 0x7ffff);
+						auto pidx = (vaddr & 0x380000) >> 19;
+
+						auto tag_lo = (stag << 13) | (cs << 10) | (pidx << 7);
+						m_core->cpr[0][COP0_TagLo] = tag_lo;
+
+						// TODO: ECC
+
+						// std::cout << std::hex << machine().describe_context() << " index load tag vaddr " << std::hex << vaddr << " result " << std::hex << tag << " setting taglo to " << std::hex << tag_lo << std::endl;
+						break;
+					}
+					case 2:     // Index Store Tag
+					{
+						// | ECC |  CS | PIdx | STag      |
+						//  31 25 24 22 21  19 18        0
+						
+						// Pull CS and STag from TagLo
+						auto tag_lo = m_core->cpr[0][COP0_TagLo];
+						auto cs = (tag_lo & 0x1c00) >> 10;
+						auto stag = (tag_lo & 0xffffe000) >> 13;
+						// Pull PIdx from vaddr
+						auto pidx = (vaddr & 0x7000) >> 12;
+						// TODO: Calculate ECC
+						const uint32_t new_entry = cs << 22 | pidx << 19 | stag;
+
+						// Virtual -> physical address mapping
+						// For a real implementation, this would have to consider TLB exceptions
+						// since we are only implementing the tag memory, we can ignore that for now.
+						const uint32_t tlbval = vtlb_table()[vaddr >> 12];
+						const uint32_t tlbaddress = (tlbval & ~0xfff) | (vaddr & 0xfff);
+						const uint32_t tag_mask = scache_size - 1;
+						const uint32_t index = (tlbaddress & tag_mask) >> scache_line_index;
+						m_scache_tag[index] = new_entry;
+
+						// std::cout << std::hex << machine().describe_context() << " index store tag vaddr " << std::hex << vaddr << " tlbaddress " << tlbaddress << " index " << index << " new_entry " << std::hex << new_entry << std::endl;
+						break;
+					}
+				default:
+					// Other cache operations are treated as a no-op for now
+					break;
+				}
+				break;
+			default:
+				// Other cache operations are treated as a no-op for now
+				break;
 		}
-		break;
-	default:
-		// Other cache operations are treated as a no-op for now
-		break;
 	}
 }

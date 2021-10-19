@@ -706,7 +706,8 @@ protected:
 
 private:
 	uint32_t scache_size = 0;
-	std::unique_ptr<uint8_t[]> m_scache;
+	uint32_t scache_line_index = 0;
+	std::unique_ptr<uint32_t[]> m_scache_tag;
 };
 
 class r4400le_device : public mips3_device {
