@@ -5621,9 +5621,9 @@ void r4400scbe_device::set_scache_size(uint32_t size)
 
 void r4400scbe_device::device_start()
 {
-	if(scache_size < 1)
+	if(scache_size < 1 || c_secondary_cache_line_size == 0)
 	{
-		fatalerror("SCACHE size was not set!");
+		fatalerror("SCACHE size and/or line size were not set!");
 	}
 
 	mips3_device::device_start();
@@ -5635,30 +5635,35 @@ void r4400scbe_device::device_start()
 	// and a cache line size of 16 words. So, the slice of the physical
 	// address used to index into the cache is bits 19:6.
 	// See chapter 11 of the R4000 user manual for more details.
-	if (c_secondary_cache_line_size != 0 && scache_size > 0)
+	if (c_secondary_cache_line_size <= 0x10)
 	{
-		if (c_secondary_cache_line_size <= 0x10)
-		{
-			scache_line_index = 4;
-		}
-		else if (c_secondary_cache_line_size <= 0x20)
-		{
-			scache_line_index = 5;
-		}
-		else if (c_secondary_cache_line_size <= 0x40)
-		{
-			scache_line_index = 6;
-		}
-		else
-		{
-			scache_line_index = 7;
-		}
-
-		uint32_t tag_size = scache_size >> scache_line_index;
-
-		m_scache_tag = std::make_unique<uint32_t[]>(tag_size);
-		save_pointer(NAME(m_scache_tag), tag_size);
+		scache_line_index = 4;
 	}
+	else if (c_secondary_cache_line_size <= 0x20)
+	{
+		scache_line_index = 5;
+	}
+	else if (c_secondary_cache_line_size <= 0x40)
+	{
+		scache_line_index = 6;
+	}
+	else
+	{
+		scache_line_index = 7;
+	}
+
+	uint32_t tag_size = scache_size >> scache_line_index;
+	tag_mask = scache_size - 1;
+
+	m_scache_tag = std::make_unique<uint32_t[]>(tag_size);
+	save_pointer(NAME(m_scache_tag), tag_size);
+}
+
+inline uint32_t r4400scbe_device::virt_to_phys_safe(uint32_t vaddr)
+{
+	// A real implementation would throw TLB exceptions when appropriate
+	// This could potentially throw off some firmware/software.
+	return (vtlb_table()[vaddr >> 12] & ~0xfff) | (vaddr & 0xfff);
 }
 
 
@@ -5671,70 +5676,59 @@ void r4400scbe_device::handle_cache(uint32_t op)
 		return;
 	}
 
-	if(c_secondary_cache_line_size != 0 && scache_size > 0)
+	if (CACHE_TYPE == 3) // Secondary cache
 	{
 		const uint32_t vaddr = RSVAL32 + SIMMVAL;
-
-		switch (CACHE_TYPE)
+		switch (CACHE_OP)
 		{
-			case 3: // Secondary Cache
-				switch (CACHE_OP)
-				{
-					case 1:     // Index Load Tag
-					{
-						// Get physical address and use it to get the tag
-						const uint32_t tlbval = vtlb_table()[vaddr >> 12];
-						const uint32_t tlbaddress = (tlbval & ~0xfff) | (vaddr & 0xfff);
-						const uint32_t tag_mask = scache_size - 1;
-						const uint32_t index = (tlbaddress & tag_mask) >> scache_line_index;
-						auto tag = m_scache_tag[index];
+			// Index Load Tag
+			case 1:
+			{
+				// Get physical address and use it to get the tag
+				const uint32_t index = (virt_to_phys_safe(vaddr) & tag_mask) >> scache_line_index;
+				const auto tag = m_scache_tag[index];
 
-						auto cs = (tag & 0x1c00000) >> 22;
-						auto stag = (tag & 0x7ffff);
-						auto pidx = (vaddr & 0x380000) >> 19;
+				// Decode entry and marshal each field to the TagLo register
+				// Note: A full implementation would also need to load the ECC register here
+				const auto cs = (tag & 0x1c00000) >> 22;
+				const auto stag = (tag & 0x7ffff);
+				const auto pidx = (vaddr & 0x380000) >> 19;
+				m_core->cpr[0][COP0_TagLo] = (stag << 13) | (cs << 10) | (pidx << 7);
 
-						auto tag_lo = (stag << 13) | (cs << 10) | (pidx << 7);
-						m_core->cpr[0][COP0_TagLo] = tag_lo;
-
-						// TODO: ECC
-
-						// std::cout << std::hex << machine().describe_context() << " index load tag vaddr " << std::hex << vaddr << " result " << std::hex << tag << " setting taglo to " << std::hex << tag_lo << std::endl;
-						break;
-					}
-					case 2:     // Index Store Tag
-					{
-						// | ECC |  CS | PIdx | STag      |
-						//  31 25 24 22 21  19 18        0
-						
-						// Pull CS and STag from TagLo
-						auto tag_lo = m_core->cpr[0][COP0_TagLo];
-						auto cs = (tag_lo & 0x1c00) >> 10;
-						auto stag = (tag_lo & 0xffffe000) >> 13;
-						// Pull PIdx from vaddr
-						auto pidx = (vaddr & 0x7000) >> 12;
-						// TODO: Calculate ECC
-						const uint32_t new_entry = cs << 22 | pidx << 19 | stag;
-
-						// Virtual -> physical address mapping
-						// For a real implementation, this would have to consider TLB exceptions
-						// since we are only implementing the tag memory, we can ignore that for now.
-						const uint32_t tlbval = vtlb_table()[vaddr >> 12];
-						const uint32_t tlbaddress = (tlbval & ~0xfff) | (vaddr & 0xfff);
-						const uint32_t tag_mask = scache_size - 1;
-						const uint32_t index = (tlbaddress & tag_mask) >> scache_line_index;
-						m_scache_tag[index] = new_entry;
-
-						// std::cout << std::hex << machine().describe_context() << " index store tag vaddr " << std::hex << vaddr << " tlbaddress " << tlbaddress << " index " << index << " new_entry " << std::hex << new_entry << std::endl;
-						break;
-					}
-				default:
-					// Other cache operations are treated as a no-op for now
-					break;
-				}
+				// std::cout << std::hex << machine().describe_context() << " index load tag vaddr " << std::hex << vaddr << " result " << std::hex << tag << " setting taglo to " << std::hex << m_core->cpr[0][COP0_TagLo] << std::endl;
 				break;
-			default:
-				// Other cache operations are treated as a no-op for now
+			}
+
+			// Index Store Tag
+			case 2:
+			{
+				// Prepare index for tag
+				const uint32_t index = (virt_to_phys_safe(vaddr) & tag_mask) >> scache_line_index;
+
+				// Assemble and set tag entry
+				// Note: A full implementation would also need to calculate the ECC bits here
+				const auto tag_lo = m_core->cpr[0][COP0_TagLo];
+				const auto cs = (tag_lo & 0x1c00) >> 10;
+				const auto stag = (tag_lo & 0xffffe000) >> 13;
+				const auto pidx = (vaddr & 0x7000) >> 12;
+				m_scache_tag[index] = cs << 22 | pidx << 19 | stag;
+
+				// std::cout << std::hex << machine().describe_context() << " index store tag vaddr " << std::hex << vaddr << " tlbaddress " << tlbaddress << " index " << index << " new_entry " << std::hex << m_scache_tag[index] << std::endl;
 				break;
+			}
+
+			case 3:
+			case 4:
+			case 5:
+			case 6:
+			case 7:
+			{
+				// Pretend it was a hit
+				SR |= SR_CH;
+			}
+		default:
+			// Other cache operations are treated as a no-op for now
+			break;
 		}
 	}
 }

@@ -690,6 +690,12 @@ public:
 };
 
 class r4400scbe_device : public mips3_device {
+	// This is a highly experimental implementation of the
+	// secondary cache subsystem, emulating only the tag memory.
+	// This allows the emulated platform to manipulate the secondary
+	// cache without actually implementing it. Like the other MIPS-III
+	// implementations, this will act as if every access is a hit. However,
+	// this naive implementation will not work for everything.
 public:
 	// construction/destruction
 	r4400scbe_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
@@ -704,9 +710,19 @@ protected:
 	virtual void device_start() override;
 	void handle_cache(uint32_t op) override;
 
-private:
+	// No-side-effect conversion from virtual to physical addresses
+	uint32_t virt_to_phys_safe(uint32_t vaddr);
+
+	// Size of the secondary cache in bytes
 	uint32_t scache_size = 0;
+
+	// Secondary cache line shift
 	uint32_t scache_line_index = 0;
+
+	// Mask for extracting the tag from a physical address
+	uint32_t tag_mask = 0;
+
+	// Tag memory
 	std::unique_ptr<uint32_t[]> m_scache_tag;
 };
 
