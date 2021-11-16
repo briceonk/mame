@@ -41,6 +41,7 @@ public:
 
 	auto irq_handler_cb() { return m_irq_handler.bind(); }
 	auto drq_handler_cb() { return m_drq_handler.bind(); }
+	auto perr_handler_cb() { return m_perr_handler.bind(); }
 
 	uint8_t dma_r();
 	void dma_w(uint8_t val);
@@ -81,6 +82,7 @@ private:
 	// I/O ports
 	devcb_write_line m_irq_handler;
 	devcb_write_line m_drq_handler;
+	devcb_write_line m_perr_handler;
 
 	enum
 	{
@@ -143,7 +145,8 @@ private:
 		INIT_CPT_RECV_BYTE_ACK,
 		INIT_CPT_RECV_WAIT_REQ,
 		INIT_CPT_RECV_BYTE_NACK,
-		INIT_XFR_RECV_BYTE_ACK_AUTOMSG
+		INIT_XFR_RECV_BYTE_ACK_AUTOMSG,
+		INIT_XFR_PERR
 	};
 
 	enum

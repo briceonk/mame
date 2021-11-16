@@ -75,6 +75,22 @@ public:
 		m_dma_check->adjust(attotime::zero);
 	}
 
+	template <dmac3_controller controller>
+	void perr_w(int state)
+	{
+		if(state)
+		{
+			m_controllers[controller].intr |= INTR_PERR;
+			m_controllers[controller].intr |= INTR_INT;
+		}
+		else
+		{
+			m_controllers[controller].intr &= ~INTR_PERR;
+		}
+		
+		m_irq_check->adjust(attotime::zero);
+	}
+
 protected:
 	// Overrides from device_t
 	virtual void device_start() override;
@@ -120,8 +136,8 @@ protected:
 		CSR_DBURST = 0x0020,
 	};
 
-	// TODO: are EOP, DREQ, PERR actually intr? Can DMAC3 clear INTR_INT itself?
-	const uint32_t INTR_CLR_MASK = (INTR_TCI | INTR_EOP | INTR_EOPI | INTR_DREQ | INTR_DRQI | INTR_PERR);
+	// TODO: are EOP, DREQ, PERR actually intr?
+	const uint32_t INTR_CLR_MASK = (INTR_INT | INTR_TCI | INTR_EOP | INTR_EOPI | INTR_DREQ | INTR_DRQI | INTR_PERR);
 	const uint32_t INTR_EN_MASK = (INTR_INTEN | INTR_TCIE | INTR_EOPIE | INTR_DRQIE);
 	enum DMAC3_INTR_MASKS : uint32_t
 	{

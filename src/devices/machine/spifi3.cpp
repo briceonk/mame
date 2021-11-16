@@ -36,7 +36,7 @@
 #define SPIFI3_TRACE (SPIFI3_DEBUG | LOG_STATE | LOG_CMD)
 #define SPIFI3_MAX (SPIFI3_TRACE | LOG_DATA)
 
-// #define VERBOSE SPIFI3_DEBUG
+#define VERBOSE (SPIFI3_DEBUG)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(SPIFI3, spifi3_device, "spifi3", "HP 1TV3-0302 SPIFI3 SCSI-2 Protocol Controller")
@@ -45,7 +45,8 @@ spifi3_device::spifi3_device(machine_config const &mconfig, char const *tag, dev
 	: nscsi_device(mconfig, SPIFI3, tag, owner, clock),
 	  nscsi_slot_card_interface(mconfig, *this, DEVICE_SELF),
 	  m_irq_handler(*this),
-	  m_drq_handler(*this)
+	  m_drq_handler(*this),
+	  m_perr_handler(*this)
 {
 }
 
@@ -72,6 +73,7 @@ void spifi3_device::device_start()
 
 	m_irq_handler.resolve_safe();
 	m_drq_handler.resolve_safe();
+	m_perr_handler.resolve_safe();
 
 	bus_id = 0;
 	tm = timer_alloc(0);
@@ -428,6 +430,7 @@ void spifi3_device::map(address_map &map)
 							   {
 								   LOGMASKED(LOG_REGISTER, "write spifi_reg.intr = 0x%x\n", data);
 								   spifi_reg.intr &= data;
+								   m_perr_handler(0);
 								   check_irq();
 							   }));
 
@@ -550,6 +553,7 @@ void spifi3_device::auxctrl_w(uint32_t data)
 		dma_dir = DMA_NONE;
 		tcounter = 0;
 		command_pos = 0;
+		m_perr_handler(0);
 	}
 	if ((spifi_reg.auxctrl & AUXCTRL_SETRST) && !(prev_auxctrl & AUXCTRL_SETRST))
 	{
@@ -718,6 +722,7 @@ void spifi3_device::prcmd_w(uint32_t data)
 			state = INIT_XFR_SEND_PAD_WAIT_REQ;
 		}
 		scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
+		m_perr_handler(0);
 		break;
 	}
 	default:
@@ -1563,13 +1568,15 @@ void spifi3_device::step(bool timeout)
 					// WORKAROUND - I haven't been able to figure out how to make the interrupts and register values work out
 					// to where DMAC3 triggers a parity error only when PAD is needed. So, we'll just transfer it ourselves instead.
 					LOG("applying write pad workaround\n");
-					state = INIT_XFR_SEND_PAD_WAIT_REQ;
+					m_perr_handler(1);
+					state = INIT_XFR_PERR;
 				}
 				else if (xfr_phase == S_PHASE_DATA_IN && new_phase == S_PHASE_DATA_IN)
 				{
 					// See above
 					LOG("applying read pad workaround\n");
-					state = INIT_XFR_RECV_PAD_WAIT_REQ;
+					m_perr_handler(1);
+					state = INIT_XFR_PERR;
 				}
 				else
 				{
@@ -1610,6 +1617,13 @@ void spifi3_device::step(bool timeout)
 				}
 			}
 			step(false);
+			break;
+		}
+
+		case INIT_XFR_PERR:
+		{
+			// TODO: change this log to LOG_DATA or similar
+			LOG("Waiting for TRPAD...\n");
 			break;
 		}
 

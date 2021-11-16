@@ -549,12 +549,14 @@ void news_r4k_state::machine_common(machine_config &config)
 																										 spifi3_device &adapter = downcast<spifi3_device &>(*device);
 																										 adapter.irq_handler_cb().set(m_dmac, FUNC(dmac3_device::irq_w<dmac3_device::CTRL0>));
 																										 adapter.drq_handler_cb().set(m_dmac, FUNC(dmac3_device::drq_w<dmac3_device::CTRL0>));
+																										 adapter.perr_handler_cb().set(m_dmac, FUNC(dmac3_device::perr_w<dmac3_device::CTRL0>));
 																									 });
 	NSCSI_CONNECTOR(config, "scsi1:7").option_set("spifi3", SPIFI3).clock(16'000'000).machine_config([this](device_t *device)
 																									 {
 																										 spifi3_device &adapter = downcast<spifi3_device &>(*device);
 																										 adapter.irq_handler_cb().set(m_dmac, FUNC(dmac3_device::irq_w<dmac3_device::CTRL1>));
 																										 adapter.drq_handler_cb().set(m_dmac, FUNC(dmac3_device::drq_w<dmac3_device::CTRL1>));
+																										 adapter.perr_handler_cb().set(m_dmac,FUNC(dmac3_device::perr_w<dmac3_device::CTRL1>));
 																									 });
 
 	m_dmac->dma_r_cb<dmac3_device::CTRL0>().set(m_scsi0, FUNC(spifi3_device::dma_r));
