@@ -35,7 +35,6 @@
 #define SPIFI3_TRACE (SPIFI3_DEBUG | LOG_STATE | LOG_CMD)
 #define SPIFI3_MAX (SPIFI3_TRACE | LOG_DATA)
 
-#define VERBOSE (SPIFI3_DEBUG)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(SPIFI3, spifi3_device, "spifi3", "HP 1TV3-0302 SPIFI3 SCSI-2 Protocol Controller")
@@ -44,8 +43,7 @@ spifi3_device::spifi3_device(machine_config const &mconfig, char const *tag, dev
 	: nscsi_device(mconfig, SPIFI3, tag, owner, clock),
 	  nscsi_slot_card_interface(mconfig, *this, DEVICE_SELF),
 	  m_irq_handler(*this),
-	  m_drq_handler(*this),
-	  m_perr_handler(*this)
+	  m_drq_handler(*this)
 {
 }
 
@@ -55,7 +53,6 @@ void spifi3_device::device_start()
 
 	m_irq_handler.resolve_safe();
 	m_drq_handler.resolve_safe();
-	m_perr_handler.resolve_safe();
 
 	bus_id = 0;
 	tm = timer_alloc(0);
@@ -413,7 +410,6 @@ void spifi3_device::map(address_map &map)
 								   LOGMASKED(LOG_REGISTER, "write spifi_reg.intr = 0x%x\n", data);
 								   spifi_reg.intr &= data;
 								   spifi_reg.icond = 0;
-								   m_perr_handler(0);
 								   check_irq();
 							   }));
 
@@ -534,7 +530,6 @@ void spifi3_device::auxctrl_w(uint32_t data)
 		dma_dir = DMA_NONE;
 		tcounter = 0;
 		command_pos = 0;
-		m_perr_handler(0);
 	}
 	if ((spifi_reg.auxctrl & AUXCTRL_SETRST) && !(prev_auxctrl & AUXCTRL_SETRST))
 	{
@@ -706,7 +701,6 @@ void spifi3_device::prcmd_w(uint32_t data)
 			state = INIT_XFR_SEND_PAD_WAIT_REQ;
 		}
 		scsi_bus->ctrl_w(scsi_refid, 0, S_ACK);
-		m_perr_handler(0);
 		break;
 	}
 	default:
@@ -756,23 +750,23 @@ void spifi3_device::check_drq()
 
 	switch (dma_dir)
 	{
-	case DMA_NONE:
-	{
-		drq_state = false;
-		break;
-	}
+		case DMA_NONE:
+		{
+			drq_state = false;
+			break;
+		}
 
-	case DMA_IN: // device to memory
-	{
-		drq_state = !transfer_count_zero() && !m_even_fifo.empty();
-		break;
-	}
+		case DMA_IN: // device to memory
+		{
+			drq_state = !transfer_count_zero() && !m_even_fifo.empty();
+			break;
+		}
 
-	case DMA_OUT: // memory to device
-	{
-		drq_state = !transfer_count_zero() && m_even_fifo.size() < 8;
-		break;
-	}
+		case DMA_OUT: // memory to device
+		{
+			drq_state = !transfer_count_zero() && m_even_fifo.size() < 8;
+			break;
+		}
 	}
 
 	if (drq_state != drq)
@@ -872,7 +866,6 @@ void spifi3_device::bus_complete()
 	LOG("bus_complete\n");
 	state = IDLE;
 
-	// TODO: Any ICOND changes needed here?
 	spifi_reg.intr |= INTR_BSRQ;
 	spifi_reg.prcmd = 0;
 	dma_set(DMA_NONE);
@@ -944,6 +937,10 @@ void spifi3_device::dma_w(uint8_t val)
 uint8_t spifi3_device::dma_r()
 {
 	LOGMASKED(LOG_DATA, "dma_r called! Fifo count = %d, state = %d.%d, tcounter = %d\n", m_even_fifo.size(), state & STATE_MASK, (state & SUB_MASK) >> SUB_SHIFT, tcounter);
+	if(m_even_fifo.empty())
+	{
+		fatalerror("spifi_3::dma_r called with empty FIFO!");
+	}
 	uint8_t val = m_even_fifo.front();
 	m_even_fifo.pop();
 	decrement_tcounter();
@@ -1552,24 +1549,20 @@ void spifi3_device::step(bool timeout)
 				LOGMASKED(LOG_DATA, "DMA transfer complete\n");
 				if (xfr_phase == S_PHASE_DATA_OUT && new_phase == S_PHASE_DATA_OUT)
 				{
-					// WORKAROUND - I haven't been able to figure out how to make the interrupts and register values work out
-					// to where DMAC3 triggers a parity error only when PAD is needed. So, we'll just transfer it ourselves instead.
-					LOG("applying write pad workaround, spstat was 0x%x\n", spifi_reg.spstat);
-					spifi_reg.spstat = SPS_DATAOUT;
-					// m_perr_handler(1);
-					//state = INIT_XFR_PERR;
+					// Set ICOND so that NEWS-OS knows that SPIFI is ready to send pad bytes.
+					// NEWS-OS will sometimes set tcounter to less than one block size, then sends TR_PAD in response to this ICOND value.
 					spifi_reg.icond = ICOND_UXPHASEZ;
-					bus_complete();
+					state = INIT_XFR_BUS_COMPLETE;
 				}
 				else if (xfr_phase == S_PHASE_DATA_IN && new_phase == S_PHASE_DATA_IN)
 				{
+					// Dump the remaining contents of the FIFO - at this point, the transfer counter is exhausted so whatever
+					// is left in the queue is pad byte junk read after the real data was received but before the DMA transfer completed
+					clear_queue(m_even_fifo);
+
 					// See above
-					// TODO: halt in sc_intr when this is triggered - then, watch the memory address of the flag it sets
-					LOG("applying read pad workaround\n");
-					//m_perr_handler(1);
-					//state = INIT_XFR_PERR;
 					spifi_reg.icond = ICOND_UXPHASEZ;
-					bus_complete();
+					state = INIT_XFR_BUS_COMPLETE;
 				}
 				else
 				{
@@ -1610,13 +1603,6 @@ void spifi3_device::step(bool timeout)
 				}
 			}
 			step(false);
-			break;
-		}
-
-		case INIT_XFR_PERR:
-		{
-			// TODO: change this log to LOG_DATA or similar
-			LOG("Waiting for TRPAD...\n");
 			break;
 		}
 

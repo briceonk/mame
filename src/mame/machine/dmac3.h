@@ -75,22 +75,6 @@ public:
 		m_dma_check->adjust(attotime::zero);
 	}
 
-	template <dmac3_controller controller>
-	void perr_w(int state)
-	{
-		if(state)
-		{
-			m_controllers[controller].intr |= INTR_PERR;
-			m_controllers[controller].intr |= INTR_INT;
-		}
-		else
-		{
-			m_controllers[controller].intr &= ~INTR_PERR;
-		}
-		
-		m_irq_check->adjust(attotime::zero);
-	}
-
 protected:
 	// Overrides from device_t
 	virtual void device_start() override;
@@ -136,7 +120,6 @@ protected:
 		CSR_DBURST = 0x0020,
 	};
 
-	// TODO: are EOP, DREQ, PERR actually intr?
 	const uint32_t INTR_CLR_MASK = (INTR_INT | INTR_TCI | INTR_EOP | INTR_EOPI | INTR_DREQ | INTR_DRQI | INTR_PERR);
 	const uint32_t INTR_EN_MASK = (INTR_INTEN | INTR_TCIE | INTR_EOPIE | INTR_DRQIE);
 	enum DMAC3_INTR_MASKS : uint32_t
@@ -146,7 +129,7 @@ protected:
 		INTR_TCIE = 0x0020,
 		INTR_TCI = 0x0040,
 		INTR_EOP = 0x0100,
-		INTR_EOPIE = 0x0200, // End of operation interrupt enable (guess)
+		INTR_EOPIE = 0x0200, // End of operation interrupt enable
 		INTR_EOPI = 0x0400,
 		INTR_DREQ = 0x1000,  // Is this just DRQ? Or is this for triggering DMA requests to the host?
 		INTR_DRQIE = 0x2000, // Interrupt on DRQ enable?

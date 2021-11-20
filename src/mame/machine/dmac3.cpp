@@ -13,7 +13,6 @@
 #define DMAC3_DEBUG (LOG_GENERAL | LOG_REGISTER | LOG_INTERRUPT)
 #define DMAC3_TRACE (DMAC3_DEBUG | LOG_DATA)
 
-#define VERBOSE DMAC3_DEBUG
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(DMAC3, dmac3_device, "dmac3", "Sony CXD8403Q DMA Controller")
@@ -40,7 +39,6 @@ uint32_t dmac3_device::csr_r(dmac3_controller controller)
 }
 uint32_t dmac3_device::intr_r(dmac3_controller controller)
 {
-	LOGMASKED(LOG_REGISTER, "dmac3-%d intr_r: 0x%x\n", controller, m_controllers[controller].intr);
 	return m_controllers[controller].intr;
 }
 uint32_t dmac3_device::length_r(dmac3_controller controller)

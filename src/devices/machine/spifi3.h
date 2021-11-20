@@ -41,7 +41,6 @@ public:
 
 	auto irq_handler_cb() { return m_irq_handler.bind(); }
 	auto drq_handler_cb() { return m_drq_handler.bind(); }
-	auto perr_handler_cb() { return m_perr_handler.bind(); }
 
 	uint8_t dma_r();
 	void dma_w(uint8_t val);
@@ -82,7 +81,6 @@ private:
 	// I/O ports
 	devcb_write_line m_irq_handler;
 	devcb_write_line m_drq_handler;
-	devcb_write_line m_perr_handler;
 
 	enum
 	{
@@ -145,8 +143,7 @@ private:
 		INIT_CPT_RECV_BYTE_ACK,
 		INIT_CPT_RECV_WAIT_REQ,
 		INIT_CPT_RECV_BYTE_NACK,
-		INIT_XFR_RECV_BYTE_ACK_AUTOMSG,
-		INIT_XFR_PERR
+		INIT_XFR_RECV_BYTE_ACK_AUTOMSG
 	};
 
 	enum
@@ -237,7 +234,7 @@ private:
 	void fifoctrl_w(uint32_t data);
 	std::queue<uint32_t> m_even_fifo;
 	std::queue<uint32_t> m_odd_fifo;
-	void clear_queue(std::queue<uint32_t> queue)
+	void clear_queue(std::queue<uint32_t>& queue)
 	{
 		while (!queue.empty())
 		{
