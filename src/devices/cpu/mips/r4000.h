@@ -62,7 +62,7 @@ public:
 		m_scache_size = size;
 	}
 
-	void set_scache_line_size(u8 size) { m_scache_line_size = size; }
+	void set_secondary_cache_line_size(u8 size) { m_scache_line_size = size; }
 
 protected:
 	enum cache_size
