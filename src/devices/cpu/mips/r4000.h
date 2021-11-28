@@ -202,7 +202,7 @@ protected:
 		EL_C   = 0x0000'0000'0000'0038, // coherency
 		EL_PFN = 0x0000'0000'3fff'ffc0, // page frame number
 
-		EL_WM  = 0x0000'0000'3fff'ffff, // write mask (change to end with f to fix NEWS-OS)
+		EL_WM  = 0x0000'0000'3fff'fffe, // write mask
 	};
 	enum cp0_tlb_el_c : u64
 	{
