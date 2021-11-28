@@ -8,7 +8,6 @@
 
 DECLARE_DEVICE_TYPE(R4000, r4000_device)
 DECLARE_DEVICE_TYPE(R4400, r4400_device)
-DECLARE_DEVICE_TYPE(R4400SC, r4400sc_device)
 DECLARE_DEVICE_TYPE(R4600, r4600_device)
 DECLARE_DEVICE_TYPE(R5000, r5000_device)
 
@@ -51,6 +50,19 @@ public:
 	// When this bit is 1 (enabled = false), the CP0 timer interrupt is disabled.
 	// When the timer interrupt is disabled, interrupt 5 becomes a standard general-purpose interrupt.
 	void set_timintdis(bool enabled) { m_timer_interrupt_enabled = enabled; }
+
+	// Secondary cache configuration
+	void set_scache_size(u32 size)
+	{
+		if(size != 0)
+		{
+			m_cp0[CP0_Config] &= ~CONFIG_SC;
+		}
+
+		m_scache_size = size;
+	}
+
+	void set_scache_line_size(u8 size) { m_scache_line_size = size; }
 
 protected:
 	enum cache_size
@@ -466,6 +478,22 @@ protected:
 	std::unique_ptr<u32[]> m_icache_tag;
 	std::unique_ptr<u32[]> m_icache_data;
 
+	// experimental scache state
+	// Size of the secondary cache in bytes
+	u32 m_scache_size = 0;
+
+	// Secondary cache line size
+	u8 m_scache_line_size = 0;
+
+	// Secondary cache line shift
+	u32 m_scache_line_index = 0;
+
+	// Mask for extracting the tag from a physical address
+	u32 m_scache_tag_mask = 0;
+
+	// scache tag memory
+	std::unique_ptr<u32[]> m_scache_tag;
+
 	// statistics
 	u64 m_tlb_scans;
 	u64 m_tlb_loops;
@@ -494,40 +522,6 @@ public:
 		// no secondary cache
 		m_cp0[CP0_Config] |= CONFIG_SC;
 	}
-};
-
-class r4400sc_device : public r4000_base_device
-{
-public:
-	r4400sc_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
-		: r4000_base_device(mconfig, R4400, tag, owner, clock, 0x0440, 0x0500, CACHE_16K, CACHE_16K, 10, 20, 69, 133)
-	{
-	}
-
-	void set_scache_size(u32 size) { m_scache_size = size; }
-	void set_scache_line_size(u8 size) { m_scache_line_size = size; }
-
-protected:
-	virtual void device_start() override;
-	void cpu_cache(u32 const op) override;
-
-	// No-side-effect conversion from virtual to physical addresses
-	u32 virt_to_phys_safe(u32 const vaddr);
-
-	// Size of the secondary cache in bytes
-	u32 m_scache_size = 0;
-
-	// Secondary cache line size
-	u8 m_scache_line_size = 0;
-
-	// Secondary cache line shift
-	u32 m_scache_line_index = 0;
-
-	// Mask for extracting the tag from a physical address
-	u32 m_scache_tag_mask = 0;
-
-	// Tag memory
-	std::unique_ptr<u32[]> m_scache_tag;
 };
 
 class r4600_device : public r4000_base_device
