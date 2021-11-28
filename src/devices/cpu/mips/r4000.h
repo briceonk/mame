@@ -359,9 +359,9 @@ protected:
 	void cpu_swr(u32 const op);
 	void cpu_sdl(u32 const op);
 	void cpu_sdr(u32 const op);
-	virtual void cpu_cache(u32 const op); // Cache handler is virtual like MIPS3 to allow derived classes to implement various cache types.
 
 	// cp0 implementation
+	void cp0_cache(u32 const op);
 	void cp0_execute(u32 const op);
 	u64 cp0_get(unsigned const reg);
 	void cp0_set(unsigned const reg, u64 const data);

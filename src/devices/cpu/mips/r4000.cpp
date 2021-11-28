@@ -987,7 +987,7 @@ void r4000_base_device::cpu_execute(u32 const op)
 		cpu_swr(op);
 		break;
 	case 0x2f: // CACHE
-		cpu_cache(op);
+		cp0_cache(op);
 		break;
 	case 0x30: // LL
 		load_linked<u32>(ADDR(m_r[RSREG], s16(op)),
@@ -1237,123 +1237,123 @@ void r4000_base_device::cpu_sdr(u32 const op)
 	store<u64, false>(offset, m_r[RTREG] << shift, ~u64(0) << shift);
 }
 
-void r4000_base_device::cpu_cache(u32 const op)
+void r4000_base_device::cp0_cache(u32 const op)
 {
-		if ((SR & SR_KSU) && !(SR & SR_CU0) && !(SR & (SR_EXL | SR_ERL)))
+	if ((SR & SR_KSU) && !(SR & SR_CU0) && !(SR & (SR_EXL | SR_ERL)))
+	{
+		cpu_exception(EXCEPTION_CP0);
+		return;
+	}
+
+	switch ((op >> 16) & 0x1f)
+	{
+	case 0x00: // index invalidate (I)
+		if (ICACHE)
 		{
-			cpu_exception(EXCEPTION_CP0);
-			return;
+			m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift] &= ~ICACHE_V;
 		}
-
-		switch ((op >> 16) & 0x1f)
+		break;
+	case 0x04: // index load tag (I)
+		if (ICACHE)
 		{
-		case 0x00: // index invalidate (I)
-			if (ICACHE)
-			{
-				m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift] &= ~ICACHE_V;
-			}
-			break;
-		case 0x04: // index load tag (I)
-			if (ICACHE)
-			{
-				u32 const tag = m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift];
+			u32 const tag = m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift];
 
-				m_cp0[CP0_TagLo] = ((tag & ICACHE_PTAG) << 8) | ((tag & ICACHE_V) >> 18) | ((tag & ICACHE_P) >> 25);
-				m_cp0[CP0_ECC] = 0; // data ecc or parity
-			}
-			break;
-		case 0x08: // index store tag (I)
-			if (ICACHE)
-			{
-				// FIXME: compute parity
-				m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift] =
-					(m_cp0[CP0_TagLo] & TAGLO_PTAGLO) >> 8 | (m_cp0[CP0_TagLo] & TAGLO_PSTATE) << 18;
-			}
-			break;
-		case 0x01: // index writeback invalidate (D)
-		case 0x02: // index invalidate (SI)
-		case 0x03: // index writeback invalidate (SD)
-		case 0x05: // index load tag (D)
-			//LOGMASKED(LOG_CACHE, "cache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
-			break;
-		case 0x06: // index load tag (SI)
-		case 0x07: // index load tag (SD)
-		{
-			if(SCACHE)
-			{
-				// Get physical address and extract tag
-				 // TODO: translation type for CACHE instruction?
-				u64 physical_address = ADDR(m_r[RSREG], s16(op));
-				translate_result const t = translate(TRANSLATE_READ, physical_address);
-				if (t == ERROR || t == MISS)
-				{
-					return;
-				}
-				u32 const index = (physical_address & m_scache_tag_mask) >> m_scache_line_index;
-				auto const tag = m_scache_tag[index];
-
-				// Decode entry and marshal each field to the TagLo register
-				// TODO: Load the ECC register here
-				auto const cs = (tag & 0x1c00000) >> 22;
-				auto const stag = (tag & 0x7ffff);
-				auto const pidx = (tag & 0x380000) >> 19;
-				m_cp0[CP0_TagLo] = (stag << 13) | (cs << 10) | (pidx << 7);
-			}
-			break;
+			m_cp0[CP0_TagLo] = ((tag & ICACHE_PTAG) << 8) | ((tag & ICACHE_V) >> 18) | ((tag & ICACHE_P) >> 25);
+			m_cp0[CP0_ECC] = 0; // data ecc or parity
 		}
-		case 0x09: // index store tag (D)
-			//LOGMASKED(LOG_CACHE, "cache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
-			break;
-		case 0x0a: // index store tag (SI)
-		case 0x0b: // index store tag (SD)
+		break;
+	case 0x08: // index store tag (I)
+		if (ICACHE)
 		{
-			if(SCACHE)
-			{
-				// Get virtual and physical addresses
-				u64 const vaddr = ADDR(m_r[RSREG], s16(op));
-
+			// FIXME: compute parity
+			m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift] =
+				(m_cp0[CP0_TagLo] & TAGLO_PTAGLO) >> 8 | (m_cp0[CP0_TagLo] & TAGLO_PSTATE) << 18;
+		}
+		break;
+	case 0x01: // index writeback invalidate (D)
+	case 0x02: // index invalidate (SI)
+	case 0x03: // index writeback invalidate (SD)
+	case 0x05: // index load tag (D)
+		//LOGMASKED(LOG_CACHE, "cache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
+		break;
+	case 0x06: // index load tag (SI)
+	case 0x07: // index load tag (SD)
+	{
+		if(SCACHE)
+		{
+			// Get physical address and extract tag
 				// TODO: translation type for CACHE instruction?
-				u64 physical_address = vaddr;
-				translate_result const t = translate(TRANSLATE_READ, physical_address);
-				if (t == ERROR || t == MISS)
-				{
-					return;
-				}
-
-				// Prepare index for tag
-				u64 const index = (physical_address & m_scache_tag_mask) >> m_scache_line_index;
-
-				// Assemble and set tag entry
-				// TODO: Calculate ECC bits here
-				auto const tag_lo = m_cp0[CP0_TagLo];
-				auto const cs = (tag_lo & 0x1c00) >> 10;
-				auto const stag = (tag_lo & 0xffffe000) >> 13;
-				auto const pidx = (vaddr & 0x7000) >> 12;
-				m_scache_tag[index] = cs << 22 | pidx << 19 | stag;
+			u64 physical_address = ADDR(m_r[RSREG], s16(op));
+			translate_result const t = translate(TRANSLATE_READ, physical_address);
+			if (t == ERROR || t == MISS)
+			{
+				return;
 			}
-			break;
+			u32 const index = (physical_address & m_scache_tag_mask) >> m_scache_line_index;
+			auto const tag = m_scache_tag[index];
+
+			// Decode entry and marshal each field to the TagLo register
+			// TODO: Load the ECC register here
+			auto const cs = (tag & 0x1c00000) >> 22;
+			auto const stag = (tag & 0x7ffff);
+			auto const pidx = (tag & 0x380000) >> 19;
+			m_cp0[CP0_TagLo] = (stag << 13) | (cs << 10) | (pidx << 7);
 		}
-		case 0x0d: // create dirty exclusive (D)
-		case 0x0f: // create dirty exclusive (SD)
+		break;
+	}
+	case 0x09: // index store tag (D)
+		//LOGMASKED(LOG_CACHE, "cache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
+		break;
+	case 0x0a: // index store tag (SI)
+	case 0x0b: // index store tag (SD)
+	{
+		if(SCACHE)
+		{
+			// Get virtual and physical addresses
+			u64 const vaddr = ADDR(m_r[RSREG], s16(op));
 
-		case 0x10: // hit invalidate (I)
-		case 0x11: // hit invalidate (D)
-		case 0x12: // hit invalidate (SI)
-		case 0x13: // hit invalidate (SD)
+			// TODO: translation type for CACHE instruction?
+			u64 physical_address = vaddr;
+			translate_result const t = translate(TRANSLATE_READ, physical_address);
+			if (t == ERROR || t == MISS)
+			{
+				return;
+			}
 
-		case 0x14: // fill (I)
-		case 0x15: // hit writeback invalidate (D)
-		case 0x17: // hit writeback invalidate (SD)
+			// Prepare index for tag
+			u64 const index = (physical_address & m_scache_tag_mask) >> m_scache_line_index;
 
-		case 0x18: // hit writeback (I)
-		case 0x19: // hit writeback (D)
-		case 0x1b: // hit writeback (SD)
-
-		case 0x1e: // hit set virtual (SI)
-		case 0x1f: // hit set virtual (SD)
-			//LOGMASKED(LOG_CACHE, "cache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
-			break;
+			// Assemble and set tag entry
+			// TODO: Calculate ECC bits here
+			auto const tag_lo = m_cp0[CP0_TagLo];
+			auto const cs = (tag_lo & 0x1c00) >> 10;
+			auto const stag = (tag_lo & 0xffffe000) >> 13;
+			auto const pidx = (vaddr & 0x7000) >> 12;
+			m_scache_tag[index] = cs << 22 | pidx << 19 | stag;
 		}
+		break;
+	}
+	case 0x0d: // create dirty exclusive (D)
+	case 0x0f: // create dirty exclusive (SD)
+
+	case 0x10: // hit invalidate (I)
+	case 0x11: // hit invalidate (D)
+	case 0x12: // hit invalidate (SI)
+	case 0x13: // hit invalidate (SD)
+
+	case 0x14: // fill (I)
+	case 0x15: // hit writeback invalidate (D)
+	case 0x17: // hit writeback invalidate (SD)
+
+	case 0x18: // hit writeback (I)
+	case 0x19: // hit writeback (D)
+	case 0x1b: // hit writeback (SD)
+
+	case 0x1e: // hit set virtual (SI)
+	case 0x1f: // hit set virtual (SD)
+		//LOGMASKED(LOG_CACHE, "cache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
+		break;
+	}
 }
 
 void r4000_base_device::cp0_execute(u32 const op)
