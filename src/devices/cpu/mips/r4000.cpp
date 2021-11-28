@@ -84,6 +84,7 @@
 
 DEFINE_DEVICE_TYPE(R4000, r4000_device, "r4000", "MIPS R4000")
 DEFINE_DEVICE_TYPE(R4400, r4400_device, "r4400", "MIPS R4400")
+DEFINE_DEVICE_TYPE(R4400SC, r4400sc_device, "r4400sc", "MIPS R4400SC")
 DEFINE_DEVICE_TYPE(R4600, r4600_device, "r4600", "QED R4600")
 DEFINE_DEVICE_TYPE(R5000, r5000_device, "r5000", "MIPS R5000")
 
@@ -944,75 +945,7 @@ void r4000_base_device::cpu_execute(u32 const op)
 		cpu_swr(op);
 		break;
 	case 0x2f: // CACHE
-		if ((SR & SR_KSU) && !(SR & SR_CU0) && !(SR & (SR_EXL | SR_ERL)))
-		{
-			cpu_exception(EXCEPTION_CP0);
-			break;
-		}
-
-		switch ((op >> 16) & 0x1f)
-		{
-		case 0x00: // index invalidate (I)
-			if (ICACHE)
-			{
-				m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift] &= ~ICACHE_V;
-				break;
-			}
-			[[fallthrough]];
-		case 0x04: // index load tag (I)
-			if (ICACHE)
-			{
-				u32 const tag = m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift];
-
-				m_cp0[CP0_TagLo] = ((tag & ICACHE_PTAG) << 8) | ((tag & ICACHE_V) >> 18) | ((tag & ICACHE_P) >> 25);
-				m_cp0[CP0_ECC] = 0; // data ecc or parity
-
-				break;
-			}
-			[[fallthrough]];
-		case 0x08: // index store tag (I)
-			if (ICACHE)
-			{
-				// FIXME: compute parity
-				m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift] =
-					(m_cp0[CP0_TagLo] & TAGLO_PTAGLO) >> 8 | (m_cp0[CP0_TagLo] & TAGLO_PSTATE) << 18;
-
-				break;
-			}
-			[[fallthrough]];
-		case 0x01: // index writeback invalidate (D)
-		case 0x02: // index invalidate (SI)
-		case 0x03: // index writeback invalidate (SD)
-
-		case 0x05: // index load tag (D)
-		case 0x06: // index load tag (SI)
-		case 0x07: // index load tag (SI)
-
-		case 0x09: // index store tag (D)
-		case 0x0a: // index store tag (SI)
-		case 0x0b: // index store tag (SD)
-
-		case 0x0d: // create dirty exclusive (D)
-		case 0x0f: // create dirty exclusive (SD)
-
-		case 0x10: // hit invalidate (I)
-		case 0x11: // hit invalidate (D)
-		case 0x12: // hit invalidate (SI)
-		case 0x13: // hit invalidate (SD)
-
-		case 0x14: // fill (I)
-		case 0x15: // hit writeback invalidate (D)
-		case 0x17: // hit writeback invalidate (SD)
-
-		case 0x18: // hit writeback (I)
-		case 0x19: // hit writeback (D)
-		case 0x1b: // hit writeback (SD)
-
-		case 0x1e: // hit set virtual (SI)
-		case 0x1f: // hit set virtual (SD)
-			//LOGMASKED(LOG_CACHE, "cache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
-			break;
-		}
+		cpu_cache(op);
 		break;
 	case 0x30: // LL
 		load_linked<u32>(ADDR(m_r[RSREG], s16(op)),
@@ -1260,6 +1193,79 @@ void r4000_base_device::cpu_sdr(u32 const op)
 	unsigned const shift = ((offset & 7) ^ R4000_ENDIAN_LE_BE(0, 7)) << 3;
 
 	store<u64, false>(offset, m_r[RTREG] << shift, ~u64(0) << shift);
+}
+
+void r4000_base_device::cpu_cache(u32 const op)
+{
+		if ((SR & SR_KSU) && !(SR & SR_CU0) && !(SR & (SR_EXL | SR_ERL)))
+		{
+			cpu_exception(EXCEPTION_CP0);
+			return;
+		}
+
+		switch ((op >> 16) & 0x1f)
+		{
+		case 0x00: // index invalidate (I)
+			if (ICACHE)
+			{
+				m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift] &= ~ICACHE_V;
+				break;
+			}
+			[[fallthrough]];
+		case 0x04: // index load tag (I)
+			if (ICACHE)
+			{
+				u32 const tag = m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift];
+
+				m_cp0[CP0_TagLo] = ((tag & ICACHE_PTAG) << 8) | ((tag & ICACHE_V) >> 18) | ((tag & ICACHE_P) >> 25);
+				m_cp0[CP0_ECC] = 0; // data ecc or parity
+
+				break;
+			}
+			[[fallthrough]];
+		case 0x08: // index store tag (I)
+			if (ICACHE)
+			{
+				// FIXME: compute parity
+				m_icache_tag[(ADDR(m_r[RSREG], s16(op)) & m_icache_mask_hi) >> m_icache_shift] =
+					(m_cp0[CP0_TagLo] & TAGLO_PTAGLO) >> 8 | (m_cp0[CP0_TagLo] & TAGLO_PSTATE) << 18;
+
+				break;
+			}
+			[[fallthrough]];
+		case 0x01: // index writeback invalidate (D)
+		case 0x02: // index invalidate (SI)
+		case 0x03: // index writeback invalidate (SD)
+
+		case 0x05: // index load tag (D)
+		case 0x06: // index load tag (SI)
+		case 0x07: // index load tag (SI)
+
+		case 0x09: // index store tag (D)
+		case 0x0a: // index store tag (SI)
+		case 0x0b: // index store tag (SD)
+
+		case 0x0d: // create dirty exclusive (D)
+		case 0x0f: // create dirty exclusive (SD)
+
+		case 0x10: // hit invalidate (I)
+		case 0x11: // hit invalidate (D)
+		case 0x12: // hit invalidate (SI)
+		case 0x13: // hit invalidate (SD)
+
+		case 0x14: // fill (I)
+		case 0x15: // hit writeback invalidate (D)
+		case 0x17: // hit writeback invalidate (SD)
+
+		case 0x18: // hit writeback (I)
+		case 0x19: // hit writeback (D)
+		case 0x1b: // hit writeback (SD)
+
+		case 0x1e: // hit set virtual (SI)
+		case 0x1f: // hit set virtual (SD)
+			//LOGMASKED(LOG_CACHE, "cache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
+			break;
+		}
 }
 
 void r4000_base_device::cp0_execute(u32 const op)
@@ -1514,9 +1520,14 @@ void r4000_base_device::cp0_tlbr()
 
 		m_cp0[CP0_PageMask] = entry.mask;
 		m_cp0[CP0_EntryHi] = entry.vpn;
+<<<<<<< HEAD
 		const u64 global = (entry.vpn & EH_G) ? EL_G : 0x0;
 		m_cp0[CP0_EntryLo0] = entry.pfn[0] | global;
 		m_cp0[CP0_EntryLo1] = entry.pfn[1] | global;
+=======
+		m_cp0[CP0_EntryLo0] = entry.pfn[0]; //| (entry.vpn & EH_G) ? 0x1 : 0x0; <- Doesn't seem to work - only lets it get a bit farther
+		m_cp0[CP0_EntryLo1] = entry.pfn[1]; //| (entry.vpn & EH_G) ? 0x1 : 0x0;
+>>>>>>> More progress
 	}
 }
 
@@ -4020,4 +4031,111 @@ std::string r4000_base_device::debug_unicode_string(u64 unicode_string_pointer)
 		result.assign(L"[unmapped]");
 
 	return utf8_from_wstring(result);
+}
+
+void r4400sc_device::device_start()
+{
+	if(m_scache_size < 1 || m_scache_line_size == 0)
+	{
+		fatalerror("SCACHE size and/or line size were not set!");
+	}
+
+	r4000_base_device::device_start();
+
+	// MIPS-III secondary cache tag size depends on the cache line size
+	// (how many bytes are transferred with one cache operation) and the
+	// size of the cache itself.
+	// For example, the Sony NEWS NWS-5000X has a 1MB secondary cache
+	// and a cache line size of 16 words. So, the slice of the physical
+	// address used to index into the cache is bits 19:6.
+	// See chapter 11 of the R4000 user manual for more details.
+	if (m_scache_line_size <= 0x10)
+	{
+		m_scache_line_index = 4;
+	}
+	else if (m_scache_line_size <= 0x20)
+	{
+		m_scache_line_index = 5;
+	}
+	else if (m_scache_line_size <= 0x40)
+	{
+		m_scache_line_index = 6;
+	}
+	else
+	{
+		m_scache_line_index = 7;
+	}
+
+	u32 tag_size = m_scache_size >> m_scache_line_index;
+	m_scache_tag_mask = m_scache_size - 1;
+
+	m_scache_tag = std::make_unique<u32[]>(tag_size);
+	save_pointer(NAME(m_scache_tag), tag_size);
+}
+
+void r4400sc_device::cpu_cache(u32 const op)
+{
+	// TODO: don't duplicate this check here
+	if ((SR & SR_KSU) && !(SR & SR_CU0) && !(SR & (SR_EXL | SR_ERL)))
+	{
+		cpu_exception(EXCEPTION_CP0);
+		return;
+	}
+	r4000_base_device::cpu_cache(op);
+
+	// TODO: reduce/eliminate magic numbers
+	if (((op >> 16) & 0x3) == 0x3) // Secondary cache
+	{
+		const u32 vaddr = ADDR(m_r[RSREG], s16(op));
+		switch (((op >> 18) & 7))
+		{
+			// Index Load Tag
+			case 1:
+			{
+				// Get physical address and use it to get the tag
+				const u32 index = (virt_to_phys_safe(vaddr) & m_scache_tag_mask) >> m_scache_line_index;
+				const auto tag = m_scache_tag[index];
+
+				// Decode entry and marshal each field to the TagLo register
+				// Note: A full implementation would also need to load the ECC register here
+				const auto cs = (tag & 0x1c00000) >> 22;
+				const auto stag = (tag & 0x7ffff);
+				const auto pidx = (vaddr & 0x380000) >> 19;
+				m_cp0[CP0_TagLo] = (stag << 13) | (cs << 10) | (pidx << 7);
+				break;
+			}
+
+			// Index Store Tag
+			case 2:
+			{
+				// Prepare index for tag
+				const uint32_t index = (virt_to_phys_safe(vaddr) & m_scache_tag_mask) >> m_scache_line_index;
+
+				// Assemble and set tag entry
+				// Note: A full implementation would also need to calculate the ECC bits here
+				const auto tag_lo = m_cp0[CP0_TagLo];
+				const auto cs = (tag_lo & 0x1c00) >> 10;
+				const auto stag = (tag_lo & 0xffffe000) >> 13;
+				const auto pidx = (vaddr & 0x7000) >> 12;
+				m_scache_tag[index] = cs << 22 | pidx << 19 | stag;
+				break;
+			}
+
+/*
+			case 3:
+			case 4:
+			case 5:
+			case 6:
+			case 7:
+			{
+				// Pretend it was a hit
+				SR |= SR_CH;
+			}
+*/
+		default:
+			// Other cache operations are treated as a no-op for now
+			// LOGMASKED(LOG_CACHE, "scache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
+			break;
+		}
+	}
 }

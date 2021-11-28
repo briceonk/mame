@@ -8,6 +8,7 @@
 
 DECLARE_DEVICE_TYPE(R4000, r4000_device)
 DECLARE_DEVICE_TYPE(R4400, r4400_device)
+DECLARE_DEVICE_TYPE(R4400SC, r4400sc_device)
 DECLARE_DEVICE_TYPE(R4600, r4600_device)
 DECLARE_DEVICE_TYPE(R5000, r5000_device)
 
@@ -189,7 +190,7 @@ protected:
 		EL_C   = 0x0000'0000'0000'0038, // coherency
 		EL_PFN = 0x0000'0000'3fff'ffc0, // page frame number
 
-		EL_WM  = 0x0000'0000'3fff'fffe, // write mask
+		EL_WM  = 0x0000'0000'3fff'ffff, // write mask (change to end with f to fix NEWS-OS)
 	};
 	enum cp0_tlb_el_c : u64
 	{
@@ -346,6 +347,7 @@ protected:
 	void cpu_swr(u32 const op);
 	void cpu_sdl(u32 const op);
 	void cpu_sdr(u32 const op);
+	virtual void cpu_cache(u32 const op); // Cache handler is virtual like MIPS3 to allow derived classes to implement various cache types.
 
 	// cp0 implementation
 	void cp0_execute(u32 const op);
@@ -492,6 +494,40 @@ public:
 		// no secondary cache
 		m_cp0[CP0_Config] |= CONFIG_SC;
 	}
+};
+
+class r4400sc_device : public r4000_base_device
+{
+public:
+	r4400sc_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
+		: r4000_base_device(mconfig, R4400, tag, owner, clock, 0x0440, 0x0500, CACHE_16K, CACHE_16K, 10, 20, 69, 133)
+	{
+	}
+
+	void set_scache_size(u32 size) { m_scache_size = size; }
+	void set_scache_line_size(u8 size) { m_scache_line_size = size; }
+
+protected:
+	virtual void device_start() override;
+	void cpu_cache(u32 const op) override;
+
+	// No-side-effect conversion from virtual to physical addresses
+	u32 virt_to_phys_safe(u32 const vaddr);
+
+	// Size of the secondary cache in bytes
+	u32 m_scache_size = 0;
+
+	// Secondary cache line size
+	u8 m_scache_line_size = 0;
+
+	// Secondary cache line shift
+	u32 m_scache_line_index = 0;
+
+	// Mask for extracting the tag from a physical address
+	u32 m_scache_tag_mask = 0;
+
+	// Tag memory
+	std::unique_ptr<u32[]> m_scache_tag;
 };
 
 class r4600_device : public r4000_base_device
