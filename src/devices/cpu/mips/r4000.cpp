@@ -208,9 +208,9 @@ void r4000_base_device::device_start()
 	 * address used to index into the cache is bits 19:6.
 	 * See chapter 11 of the R4000 user manual for more details.
 	 */
-	if(SCACHE)
+	if (SCACHE)
 	{
-		if(m_scache_line_size == 0)
+		if (m_scache_line_size == 0)
 			fatalerror("SCACHE line size was not set!");
 
 		if (m_scache_line_size <= 0x10)
@@ -1288,7 +1288,6 @@ void r4000_base_device::cp0_cache(u32 const op)
 		break;
 	case 0x06: // index load tag (SI)
 	case 0x07: // index load tag (SD)
-	{
 		if (SCACHE)
 		{
 			// Get physical address and extract tag
@@ -1316,13 +1315,11 @@ void r4000_base_device::cp0_cache(u32 const op)
 		else
 			LOGMASKED(LOG_CACHE, "cache 0x%08x called without scache enabled (%s)\n", op, machine().describe_context());
 		break;
-	}
 	case 0x09: // index store tag (D)
 		//LOGMASKED(LOG_CACHE, "cache 0x%08x unimplemented (%s)\n", op, machine().describe_context());
 		break;
 	case 0x0a: // index store tag (SI)
 	case 0x0b: // index store tag (SD)
-	{
 		if (SCACHE)
 		{
 			// Get virtual and physical addresses
@@ -1352,7 +1349,6 @@ void r4000_base_device::cp0_cache(u32 const op)
 		else
 			LOGMASKED(LOG_CACHE, "cache 0x%08x called without scache enabled (%s)\n", op, machine().describe_context());
 		break;
-	}
 	case 0x0d: // create dirty exclusive (D)
 	case 0x0f: // create dirty exclusive (SD)
 
