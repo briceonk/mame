@@ -1341,8 +1341,8 @@ void r4000_base_device::cp0_cache(u32 const op)
 				// Assemble and set tag entry
 				// TODO: Calculate ECC bits here
 				u64 const tag_lo = m_cp0[CP0_TagLo];
-				u32 const cs = (tag_lo & 0x1c00) >> 10;
-				u32 const stag = (tag_lo & 0xffffe000) >> 13;
+				u32 const cs = (tag_lo & TAGLO_CS) >> 10;
+				u32 const stag = (tag_lo & TAGLO_STAG) >> 13;
 				u32 const pidx = (virtual_address & 0x7000) >> 12;
 				m_scache_tag[index] = cs << 22 | pidx << 19 | stag;
 			}

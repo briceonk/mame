@@ -310,6 +310,8 @@ protected:
 		TAGLO_PTAGLO = 0xffffff00, // physical adddress bits 35:12
 		TAGLO_PSTATE = 0x000000c0, // primary cache state
 		TAGLO_P      = 0x00000001, // primary tag even parity
+		TAGLO_CS     = 0x00001c00, // scache status
+		TAGLO_STAG   = 0xffffe000, // scache tag
 	};
 	enum icache_mask : u32
 	{
@@ -327,7 +329,7 @@ protected:
 	};
 	enum scache_mask : u32
 	{
-		SCACHE_CS = 0x01c00000, // cache state
+		SCACHE_CS   = 0x01c00000, // cache state
 		SCACHE_STAG = 0x0007ffff, // physical tag
 		SCACHE_PIDX = 0x00380000, // primary cache index
 	};
