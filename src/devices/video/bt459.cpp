@@ -19,7 +19,7 @@
 
 #include "screen.h"
 
-#define VERBOSE 0
+#define VERBOSE 1
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(BT459, bt459_device, "bt459", "Brooktree Bt459 256 Color RAMDAC")
