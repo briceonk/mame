@@ -332,9 +332,10 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x1fc00000, 0x1fc3ffff).rom().region("eprom", 0);
 
 	map(0x1b012000, 0x1b0120ff).rw(m_rtc, FUNC(mc146818_device::read_direct), FUNC(mc146818_device::write_direct)).umask32(0xff000000); // extends past this for rest of NVRAM??
-	map(0x10000000, 0x1007ffff).lrw8(NAME([this](offs_t offset){ return m_vram->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram->write(offset, data); })); // guess
+	map(0x10000000, 0x101fffff).lrw8(NAME([this](offs_t offset){ return m_vram->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram->write(offset, data); })); // guess
 
-	map(0x10400000, 0x1057ffff).lrw8(NAME([this](offs_t offset)
+  //map(0x10400000, 0x1057ffff).lrw8(NAME([this](offs_t offset)
+	map(0x10400000, 0x105fffff).lrw8(NAME([this](offs_t offset)
 		{ 
 			return m_vram->read(offset); 
 		}), 
@@ -343,55 +344,98 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 			//LOG("0x104%5x: 0x%8x\n", offset, data);
 			m_vram->write(offset, data); 
 		}));
-
+	
 /*
-	map(0x10400000, 0x1047ffff).lrw8(
+	map(0x10400000, 0x1043ffff).lrw8(
 		NAME([this](offs_t offset)
 		{ 
-			return m_vram->read(offset * 4); 
+			return m_vram->read(offset * 8); 
 		}), 
 		NAME([this](offs_t offset, uint8_t data) 
 		{
-			LOG("0x104%5x: 0x%8x\n", offset, data);
-			m_vram->write(offset * 4, data); 
+			// LOG("0x104%5x: 0x%8x\n", offset, data);
+			m_vram->write(offset * 8, data); 
 		})); // guess
 	
-	map(0x10480000, 0x104fffff).lrw8(
+	map(0x10440000, 0x1047ffff).lrw8(
+	NAME([this](offs_t offset)
+	{ 
+		return m_vram->read((offset + 1) * 8 ); 
+	}), 
+	NAME([this](offs_t offset, uint8_t data) 
+	{
+		// LOG("0x104%5x: 0x%8x\n", offset, data);
+		m_vram->write((offset + 1) * 8, data); 
+	})); // guess
+
+	map(0x10480000, 0x104bffff).lrw8(
 		NAME([this](offs_t offset)
 		{ 
-			return m_vram->read((offset * 4) + 1); 
+			return m_vram->read((offset + 2) * 8); 
 		}), 
 		NAME([this](offs_t offset, uint8_t data) 
 		{
-			LOG("0x104%5x: 0x%8x\n", offset + 0x80000, data);
-			m_vram->write((offset * 4) + 1, data); 
+			// LOG("0x104%5x: 0x%8x\n", offset + 0x80000, data);
+			m_vram->write((offset + 2) * 8, data); 
 		})); // guess
-	
-	map(0x10500000, 0x1057ffff).lrw8(
+
+	map(0x104c0000, 0x104fffff).lrw8(
 		NAME([this](offs_t offset)
 		{ 
-			return m_vram->read((offset * 4) + 2);
-		}),
+			return m_vram->read((offset + 3) * 8); 
+		}), 
 		NAME([this](offs_t offset, uint8_t data) 
 		{
-			LOG("0x105%5x: 0x%8x\n", offset, data); 
-			m_vram->write((offset * 4) + 2, data);
+			// LOG("0x104%5x: 0x%8x\n", offset + 0x80000, data);
+			m_vram->write((offset + 3) * 8, data); 
 		})); // guess
 	
-	map(0x10580000, 0x105fffff).lrw8(
+	map(0x10500000, 0x1053ffff).lrw8(
 		NAME([this](offs_t offset)
-		{
-			return m_vram->read((offset * 4) + 3); 
+		{ 
+			return m_vram->read((offset + 4) * 8);
 		}),
 		NAME([this](offs_t offset, uint8_t data) 
 		{
-			LOG("0x105%5x: 0x%8x\n", offset + 0x80000, data); 
-			m_vram->write((offset * 4) + 3, data); 
+			// LOG("0x105%5x: 0x%8x\n", offset, data); 
+			m_vram->write((offset + 4) * 8, data);
+		})); // guess	
+	
+	map(0x10540000, 0x1057ffff).lrw8(
+		NAME([this](offs_t offset)
+		{ 
+			return m_vram->read((offset + 5) * 8);
+		}),
+		NAME([this](offs_t offset, uint8_t data) 
+		{
+			// LOG("0x105%5x: 0x%8x\n", offset, data); 
+			m_vram->write((offset + 5) * 8, data);
 		})); // guess
-		*/
+	
+	map(0x10580000, 0x105bffff).lrw8(
+		NAME([this](offs_t offset)
+		{
+			return m_vram->read((offset + 6) * 8); 
+		}),
+		NAME([this](offs_t offset, uint8_t data) 
+		{
+			// LOG("0x105%5x: 0x%8x\n", offset + 0x80000, data); 
+			m_vram->write((offset + 6) * 8, data); 
+		})); // guess
+	
+	map(0x105c0000, 0x105fffff).lrw8(
+		NAME([this](offs_t offset)
+		{
+			return m_vram->read((offset + 7) * 8); 
+		}),
+		NAME([this](offs_t offset, uint8_t data) 
+		{
+			// LOG("0x105%5x: 0x%8x\n", offset + 0x80000, data); 
+			m_vram->write((offset + 7) * 8, data); 
+		})); // guess
+	*/
 
-
-	map(0x10c00000, 0x10c7ffff).lrw8(NAME([this](offs_t offset){ return m_vram->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram->write(offset, 0); })); // guess, block write
+	// map(0x10c00000, 0x10c7ffff).lrw8(NAME([this](offs_t offset){ return m_vram->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram->write(offset, 0); })); // guess, block write
 
 	
 	map(0x15f00e00, 0x15f00e03).lr32(NAME([]() { return 0x10;})); // fb present?
@@ -925,7 +969,10 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
 	// m_screen->set_raw(107'500'000, 1504, (296 + 20), (1184 + 296 + 20), 920, 34, (884 + 34)); // just copy_pasted everything but the clock from gt.cpp for now
 	// 1280 x 1024
-	m_screen->set_raw(107'500'000, 1504, 20, 1504 - 204, 1124, 34, 1124 - 34);
+	//m_screen->set_raw(107'500'000, 1504, 20, 1504 - 204, 1124, 34, 1124 - 34);
+	//m_screen->set_raw(107'500'000, 1280 + 29, 296, 1280 + 296, 1124, 34, 1024 + 34);
+	m_screen->set_raw(107'500'000, 2048, 0, 2048, 1024, 0, 1024);
+	
 	m_screen->set_screen_update(FUNC(ews4800_r3k_state::screen_update));
 	BT459(config, m_bt459, 107'500'000);
 	RAM(config, m_vram, 0).set_default_size("2M");
