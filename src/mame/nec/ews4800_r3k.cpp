@@ -58,7 +58,7 @@ public:
 		, m_rtc(*this, "rtc")
 		, m_screen(*this, "screen")
 		, m_bt459(*this, "ramdac")
-		, m_vram(*this, "vram")
+		, m_vram(*this, "vram%u", 0U)
 		// , m_scsibus(*this, "scsi")
 		// , m_scsi(*this, "scsi:7:ncr53c96")
 		// , m_net(*this, "net")
@@ -103,7 +103,7 @@ private:
 
 	required_device<screen_device> m_screen;
 	required_device<bt459_device> m_bt459;
-	required_device<ram_device> m_vram;
+	required_device_array<ram_device, 2> m_vram; // shadow vram for reshaping for RAMDAC on the fly while maintaing CPU access coherency
 	
 	// required_device<nscsi_bus_device> m_scsibus;
 	// required_device<ncr53c94_device> m_scsi;
@@ -310,522 +310,45 @@ void ews4800_r3k_state::init()
 	m_cpu->space(0).install_ram(0x00000000, m_ram->mask(), m_ram->pointer());
 }
 
-// void ews4800_r3k_state::patch_rom(address_map &map)
-// {
-// 	// Bypass checksum
-// 	map(0x1fc0390c, 0x1fc0390f).lr32(NAME([]() { return 0x11400009; })); // beq $t2,$0,$bfc03934
-
-// 	// Bypass part of the CPU logical check - it does some seemingly invalid stuff with the ADDU instruction that fails with the current emulation
-// 	// Specifically, it tries to run ADDU on improperly sign-extended 32-bit values by manipulating them in 64 bit mode first
-// 	// map(0x1fc05ee4, 0x1fc05ee7).lr32(NAME([]() { return 0x14430005; })); // bne $v0,$v1,$bfc05efc
-// 	// map(0x1fc05f04, 0x1fc05f07).lr32(NAME([]() { return 0x14430005; })); // bne $v0,$v1,$bfc05f1c
-//     // map(0x1fc05f2c, 0x1fc05f2f).lr32(NAME([]() { return 0x14430006; })); // bne $v0,$v1,$bfc05f48
-
-// 	// Bypass obnoxious primary cache test - the r4000.cpp driver doesn't have a primary cache yet
-// 	map(0x1fc06940, 0x1fc06943).lr32(NAME([]() { return 0xbf01e27; })); // j $bfc0789c
-// 	map(0x1fc06944, 0x1fc06947).lr32(NAME([]() { return 0x0; })); // nop for branch delay slot
-// }
-
 void ews4800_r3k_state::cpu_map(address_map &map)
 {
 	map.unmap_value_low();
 	map(0x1fc00000, 0x1fc3ffff).rom().region("eprom", 0);
 
+	map(0x1fc04704, 0x1fc04707).lr8(NAME([](){ return 0x0; })); // patch out memory test that relies on cache
+	map(0x1fc047b0, 0x1fc047b3).lr8(NAME([](){ return 0x0; })); // patch out memory test that relies on cache
+
 	map(0x1b012000, 0x1b0120ff).rw(m_rtc, FUNC(mc146818_device::read_direct), FUNC(mc146818_device::write_direct)).umask32(0xff000000); // extends past this for rest of NVRAM??
-	map(0x10000000, 0x101fffff).lrw8(NAME([this](offs_t offset){ return m_vram->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram->write(offset, data); })); // guess
+	map(0x10000000, 0x101fffff).lrw8(NAME([this](offs_t offset){ return m_vram[0]->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram[0]->write(offset, data); })); // guess
 
   //map(0x10400000, 0x1057ffff).lrw8(NAME([this](offs_t offset)
 	map(0x10400000, 0x105fffff).lrw8(NAME([this](offs_t offset)
 		{ 
-			return m_vram->read(offset); 
+			return m_vram[0]->read(offset);
 		}), 
 		NAME([this](offs_t offset, uint8_t data) 
 		{
-			//LOG("0x104%5x: 0x%8x\n", offset, data);
-			m_vram->write(offset, data); 
+			m_vram[0]->write(offset, data);
+
+			// Reshape data for RAMDAC
+			int column = offset % 2048;
+			int row = offset / 2048;
+			if (column < 1280 && row < 1024)
+			{
+				 m_vram[1]->write(0x500 * row + column, data);
+			}
 		}));
 	
-/*
-	map(0x10400000, 0x1043ffff).lrw8(
-		NAME([this](offs_t offset)
-		{ 
-			return m_vram->read(offset * 8); 
-		}), 
-		NAME([this](offs_t offset, uint8_t data) 
-		{
-			// LOG("0x104%5x: 0x%8x\n", offset, data);
-			m_vram->write(offset * 8, data); 
-		})); // guess
-	
-	map(0x10440000, 0x1047ffff).lrw8(
-	NAME([this](offs_t offset)
-	{ 
-		return m_vram->read((offset + 1) * 8 ); 
-	}), 
-	NAME([this](offs_t offset, uint8_t data) 
-	{
-		// LOG("0x104%5x: 0x%8x\n", offset, data);
-		m_vram->write((offset + 1) * 8, data); 
-	})); // guess
-
-	map(0x10480000, 0x104bffff).lrw8(
-		NAME([this](offs_t offset)
-		{ 
-			return m_vram->read((offset + 2) * 8); 
-		}), 
-		NAME([this](offs_t offset, uint8_t data) 
-		{
-			// LOG("0x104%5x: 0x%8x\n", offset + 0x80000, data);
-			m_vram->write((offset + 2) * 8, data); 
-		})); // guess
-
-	map(0x104c0000, 0x104fffff).lrw8(
-		NAME([this](offs_t offset)
-		{ 
-			return m_vram->read((offset + 3) * 8); 
-		}), 
-		NAME([this](offs_t offset, uint8_t data) 
-		{
-			// LOG("0x104%5x: 0x%8x\n", offset + 0x80000, data);
-			m_vram->write((offset + 3) * 8, data); 
-		})); // guess
-	
-	map(0x10500000, 0x1053ffff).lrw8(
-		NAME([this](offs_t offset)
-		{ 
-			return m_vram->read((offset + 4) * 8);
-		}),
-		NAME([this](offs_t offset, uint8_t data) 
-		{
-			// LOG("0x105%5x: 0x%8x\n", offset, data); 
-			m_vram->write((offset + 4) * 8, data);
-		})); // guess	
-	
-	map(0x10540000, 0x1057ffff).lrw8(
-		NAME([this](offs_t offset)
-		{ 
-			return m_vram->read((offset + 5) * 8);
-		}),
-		NAME([this](offs_t offset, uint8_t data) 
-		{
-			// LOG("0x105%5x: 0x%8x\n", offset, data); 
-			m_vram->write((offset + 5) * 8, data);
-		})); // guess
-	
-	map(0x10580000, 0x105bffff).lrw8(
-		NAME([this](offs_t offset)
-		{
-			return m_vram->read((offset + 6) * 8); 
-		}),
-		NAME([this](offs_t offset, uint8_t data) 
-		{
-			// LOG("0x105%5x: 0x%8x\n", offset + 0x80000, data); 
-			m_vram->write((offset + 6) * 8, data); 
-		})); // guess
-	
-	map(0x105c0000, 0x105fffff).lrw8(
-		NAME([this](offs_t offset)
-		{
-			return m_vram->read((offset + 7) * 8); 
-		}),
-		NAME([this](offs_t offset, uint8_t data) 
-		{
-			// LOG("0x105%5x: 0x%8x\n", offset + 0x80000, data); 
-			m_vram->write((offset + 7) * 8, data); 
-		})); // guess
-	*/
+	map(0x1fbe0060, 0x1fbe0063); // DMA controller
 
 	// map(0x10c00000, 0x10c7ffff).lrw8(NAME([this](offs_t offset){ return m_vram->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram->write(offset, 0); })); // guess, block write
 
-	
 	map(0x15f00e00, 0x15f00e03).lr32(NAME([]() { return 0x10;})); // fb present?
 	map(0x15f00c50, 0x15f00c5f).m(m_bt459, FUNC(bt459_device::map)).umask32(0xff);
-	//map(0x)
-
-	// map(0x1fbfffe0, 0x1fbfffff).ram();
-	// map(0xfffff0, 0xffffff).ram();
-	// patch_rom(map);
-
-	// // Interrupt controller
-	// map(0x1e000000, 0x1e000003).w(FUNC(ews4800_r3k_state::intc_clear_w));
-	// map(0x1e000004, 0x1e000007).r(FUNC(ews4800_r3k_state::intc_status_r));
-	// map(0x1e000008, 0x1e00000b).rw(FUNC(ews4800_r3k_state::intc_mask_r), FUNC(ews4800_r3k_state::intc_mask_w));
-
-	// map(0x1e000040, 0x1e000043).lrw32(NAME([this]()
-	// 									{
-	// 									// LOG("read vmechk 0x%x (%s)\n", vmechk, machine().describe_context());
-	// 									return 0x0; }),
-	// 								NAME([this](offs_t offset, uint32_t val)
-	// 									{
-	// 									vmechk = val;
-	// 									LOG("write vmechk 0x%x (%s)\n", vmechk, machine().describe_context());
-	// 									}));
-
-	// map(0x1e4a0040, 0x1e4a0043).lrw32(NAME([this]()
-	// 									   {
-	// 										LOG("read led status 0x%x (%s)\n", led_state, machine().describe_context());
-	// 										return led_state; }),
-	// 								  NAME([this](offs_t offset, uint32_t val)
-	// 									   {
-	// 										led_state = val;
-	// 										LOG("write led status 0x%x (%s)\n", led_state, machine().describe_context());
-	// 										}));
-	// map(0x1e4a0044, 0x1e4a0047).lrw32(NAME([this]()
-	// 									{
-	// 									LOG("read error code 0x%x (%s)\n", error_code, machine().describe_context());
-	// 									return error_code; }),
-	// 								NAME([this](offs_t offset, uint32_t val)
-	// 									{
-	// 									error_code = val;
-	// 									LOG("write error_code 0x%x (%s)\n", error_code, machine().describe_context());
-	// 									}));
-
-	// // Timekeeper NVRAM and RTC
-	// map(0x1e490000, 0x1e497fff).rw(m_rtc, FUNC(mk48t08_device::read), FUNC(mk48t08_device::write)).umask32(0xff000000);
-	// // Force zs console - something in the ROM monitor resets this to graphics, which isn't emulated.
-	// map(0x1e4932a0, 0x1e4932a3).lr32(NAME([]() { return 0x01000000; }));
-	// map(0x1e493030, 0x1e493033).lr32(NAME([]() { return 0x02000000; })); // boot device control
-	// map(0x1e493024, 0x1e493027).lr32(NAME([]() { return 0x01000000; })); // no keyboard (probably something needs to change so it detects no keyboard)
-
-	// map(0x1e400000, 0x1e400007).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
 	map(0x1b010000, 0x1b01000f)
 		.rw(m_scc[0], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w))
 		.umask32(0xff000000);
 	map(0x1b011000, 0x1b01100f).rw(m_scc[1], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)).umask32(0xff000000);
-	// map(0x1e410000, 0x1e41000f).m(m_scsi, FUNC(ncr53c94_device::map));
-
-	// // Debug below this line
-	// /*
-	// map(0x1e000010, 0x1e000fff).lrw8(NAME([this](offs_t offset)
-	// 									  {
-	// 										uint8_t val = m_debug_ram->read(offset);
-	// 										// LOG("read 0x%x, returning 0x%x (%s)\n", offset,val, machine().describe_context());
-	// 										return val; }),
-	// 								 NAME([this](offs_t offset, uint8_t val)
-	// 									  {
-	// 												// LOG("write 0x%x = 0x%x (%s)\n", offset, val, machine().describe_context());
-	// 												m_debug_ram->write(offset, val); }));
-	// */
-
-	// map(0x1e000050, 0x1e00006f)
-	// 	.lr32(NAME([]()
-	// 			   { return 0xff; }));
-
-	// map(0x1e000020, 0x1e000023).lrw32(NAME([this](offs_t offset)
-	// 									   { return timer_register; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   {
-	// 											timer_register = data;
-	// 											if (data == 0xc07c) // TODO: what is this value actually signaling?
-	// 											{
-	// 												LOG("Enabling timer! Value = 0x%x (%s)\n", data, machine().describe_context());
-	// 												m_timer0_timer->adjust(attotime::zero, 0, attotime::from_hz(100));
-	// 											}
-	// 											else
-	// 											{
-	// 												LOG("Disabling timer! Value = 0x%x (%s)\n", data, machine().describe_context());
-	// 												m_timer0_timer->adjust(attotime::never);
-	// 											} }));
-	// map(0x1e000024, 0x1e000027).lrw32(NAME([this]()
-	// 									   { 
-	// 										LOG("read ur0 0x%x (%s)\n", unknown_register_0, machine().describe_context()); 
-	// 										return unknown_register_0; }),
-	// 								  NAME([this](offs_t offset, uint32_t val)
-	// 									   {
-	// 										unknown_register_0 = val;
-	// 										LOG("write ur0 0x%x (%s)\n", unknown_register_0, machine().describe_context());
-	// 										}));
-	// map(0x1e000028, 0x1e00002b).lrw32(NAME([this]()
-	// 									   { 
-	// 										LOG("read ur02 0x%x (%s)\n", unknown_register_02, machine().describe_context()); 
-	// 										return unknown_register_02; }),
-	// 								  NAME([this](offs_t offset, uint32_t val)
-	// 									   {
-	// 										unknown_register_02 = val;
-	// 										LOG("write ur02 0x%x (%s)\n", unknown_register_02, machine().describe_context());
-	// 										}));
-
-	// map(0x1e00002c, 0x1e00002f).lrw32(NAME([this]()
-	// 									   { 
-	// 										LOG("read 2c (%s)\n", machine().describe_context()); 
-	// 										return 0x30d40; }),
-	// 								  NAME([this](offs_t offset, uint32_t val)
-	// 									   {
-	// 										LOG("write 2c only 0x%x (%s)\n", val, machine().describe_context());
-	// 										}));  
-	// //(NAME([]() { return 0x30d40; })); // TODO: 0x30d40 is written to 0x24-0x27 right before this - maybe this should mirror what is there?
-	
-	// map(0x1e000074, 0x1e000077).lrw32(NAME([this]()
-	// 									   { 
-	// 										LOG("read ur01 0x%x (%s)\n", unknown_register_01, machine().describe_context()); 
-	// 										return unknown_register_01; }),
-	// 								  NAME([this](offs_t offset, uint32_t val)
-	// 									   {
-	// 										unknown_register_01 = val;
-	// 										LOG("write ur01 0x%x (%s)\n", unknown_register_01, machine().describe_context());
-	// 										}));
-	
-	
-
-
-	// map(0x1e0000c0, 0x1e0000c3).lr32(NAME([]()
-	// 									  { return 0x101E101E; }));
-	// map(0x1e0000c4, 0x1e0000c7).lr32(NAME([]()
-	// 									  { return 0xaa0f0000; }));
-	// map(0x1e0000e0, 0x1e0000e3).lr32(NAME([]()
-	// 									  { return 0x8A78001F; }));
-	// map(0x1e0000e4, 0x1e0000e7).lr32(NAME([]()
-	// 									  { return 0x1F04028; }));
-	// map(0x1e0000e8, 0x1e0000eb).lr32(NAME([]()
-	// 									  { return 0x1; }));
-
-
-	// // some ASObus thing? Not sure what ASObus is, but it is mentioned in the NetBSD source code and seems to handle ZS, keyboard+mouse, SCSI, and Ethernet.
-	
-	// map(0x1e409000, 0x1e4090ff).ram();
-	// map(0x1e409004, 0x1e409007).lrw32(NAME([this]()
-	// 									   { return unknown_register_1; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { unknown_register_1 = data; }));
-
-	// map(0x1e40a000, 0x1e40a0ff).ram(); // contains interrupt stuff for ASObus
-
-	// map(0x1e40a008, 0x1e40a00b).lrw32(NAME([this]() // TODO: actually apply DMA mask
-	// 									   { /*LOG("get asobus dma status = 0x%x (%s)\n", asob_dma_status, machine().describe_context());*/ return asob_dma_status; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { LOG("set asobus dma status = 0x%x\n", data); asob_dma_status = data; }));
-	// map(0x1e40a00c, 0x1e40a00f).lrw32(NAME([this]()
-	// 									   {
-	// 										LOG("get asobus int mask = 0x%x\n", asob_int_mask);
-	// 										return asob_int_mask; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   {
-	// 										 LOG("set asobus int mask = 0x%x\n", data); 
-	// 									   	 asob_int_mask = data; }));
-	// map(0x1e40a010, 0x1e40a013).lrw32(NAME([this]()
-	// 									   {
-	// 										LOG("get asobus int status = 0x%x (%s)\n", asob_int_status, machine().describe_context());
-	// 										return asob_int_status; 
-	// 									   }), NAME([this](offs_t offset, uint32_t data) {
-	// 										 LOG("set asobus int status = 0x%x\n", data); 
-	// 									   	 asob_int_status = data; 
-	// 									   }));
-	// map(0x1e408000, 0x1e408003).lrw32(NAME([this]()
-	// 									   {
-	// 											LOG("read asobus dma int 0x%x (%s)\n", asob_dma_int, machine().describe_context()); 
-	// 											return asob_dma_int; }),
-	// 								  NAME([this](offs_t offset, uint8_t val)
-	// 									   {
-	// 											LOG("write asobus dma int 0x%x (%s)\n", val, machine().describe_context());
-	// 											asob_dma_int = val; })); // contains DMA interrupt stuff
-	
-	// // ASObus device windows
-	// map(0x1e408010, 0x1e4080ff).ram();
-	// map(0x1e418000, 0x1e4180ff).ram();
-	// map(0x1e418008, 0x1e41800b).lrw32(NAME([this]()
-	// 									   {
-	// 	LOG("read scsi dma cmd 0x%x (%s)\n", scsi_dma_cmd, machine().describe_context());
-	// 	return scsi_dma_cmd; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   {
-	// 	LOG("write scsi dma cmd 0x%x (%s)\n", data, machine().describe_context());
-	// 	scsi_dma_cmd = data; 
-	// 	if((scsi_dma_cmd & 0xff) == 0x7) // TODO: actual bit definitions
-	// 	{
-	// 		m_dma_check->adjust(attotime::zero);
-	// 	}
-	// 	}));
-	// map(0x1e418010, 0x1e418013).lrw32(NAME([this]()
-	// 									   {
-	// 	LOG("read scsi dma addr 0x%x (%s)\n", scsi_dma_addr, machine().describe_context());
-	// 	return scsi_dma_addr; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   {
-	// 	LOG("write scsi dma addr 0x%x (%s)\n", data, machine().describe_context());
-	// 	scsi_dma_addr = data; }));
-
-	// map(0x1e418014, 0x1e418017).lrw32(NAME([this]()
-	// 									{
-	// LOG("read scsi dma tcount 0x%x (%s)\n", scsi_dma_tcount, machine().describe_context());
-	// return scsi_dma_tcount; }),
-	// 								NAME([this](offs_t offset, uint32_t data)
-	// 									{
-	// LOG("write scsi dma tcount 0x%x (%s)\n", data, machine().describe_context());
-	// scsi_dma_tcount = data; }));
-
-	// map(0x1e428000, 0x1e4280ff).ram();
-	// map(0x1e438000, 0x1e4380ff).ram();
-	// map(0x1e448000, 0x1e4480ff).ram();
-	// map(0x1e458000, 0x1e4580ff).ram();
-	// map(0x1e468000, 0x1e4680ff).ram();
-	// map(0x1e478000, 0x1e4780ff).ram();
-	// map(0x1e488000, 0x1e4880ff).ram();
-	// map(0x1e498000, 0x1e4980ff).ram();
-	// map(0x1e4a8000, 0x1e4a80ff).ram();
-	// map(0x1e4b8000, 0x1e4b80ff).ram();
-	// map(0x1e4c8000, 0x1e4c80ff).ram();
-	// map(0x1e4d8000, 0x1e4d80ff).ram();
-	// map(0x1e4e8000, 0x1e4e80ff).ram();
-	// map(0x1e4f8000, 0x1e4f80ff).ram();
-
-	// // APbus?
-	// map(0x1e807020, 0x1e807023).lr32(NAME([this]()
-	// 									  { 
-	// 										LOG("returning 0x43700000 (%s)\n", machine().describe_context());
-	// 										return 0x43700000; }));
-
-	// /*
-	// map(0x1e804008, 0x1e80400b).lr32(NAME([]()
-	// 									  { return 0x00; }));
-	// map(0x1e804018, 0x1e80401b).lr32(NAME([]()
-	// 									{ return 0x00; }));
-	// map(0x1e804028, 0x1e80402b).lr32(NAME([]()
-	// 									{ return 0x00; }));
-	// map(0x1e807020, 0x1e807023)
-	// 	.lr32(NAME([]()
-	// 			   { return 0x43700000; }));
-	// 			   */
-	// map(0x1e805020, 0x1e805023).lrw32(NAME([this]()
-	// 									   { return unknown_register_3; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { unknown_register_3 = data; }));
-	// map(0x1e805000, 0x1e805003).lrw32(NAME([this]()
-	// 									   { 
-	// 										LOG("read ur4, returning 0x%x (%s)\n", unknown_register_4, machine().describe_context()); 
-	// 										return unknown_register_4; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { 
-	// 										LOG("write ur4 = 0x%x (%s)\n", data, machine().describe_context());
-	// 										unknown_register_4 = data; }));
-	// map(0x1e805004, 0x1e805007).lrw32(NAME([this]()
-	// 									   { 
-	// 										LOG("read ur5, returning 0x%x (%s)\n", unknown_register_5, machine().describe_context()); 
-	// 										return unknown_register_5; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { 
-	// 										LOG("write ur5 = 0x%x (%s)\n", data, machine().describe_context());
-	// 										unknown_register_5 = data; }));
-	// map(0x1e805008, 0x1e80500b).lrw32(NAME([this]()
-	// 									   { 
-	// 										LOG("read ur6, returning 0x%x (%s)\n", unknown_register_6, machine().describe_context()); 
-	// 										return unknown_register_6; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { 
-	// 										LOG("write ur6 = 0x%x (%s)\n", data, machine().describe_context());
-	// 										unknown_register_6 = data; }));
-	// map(0x1e80500c, 0x1e80500f).lrw32(NAME([this]()
-	// 									   { 
-	// 										LOG("read ur7, returning 0x%x (%s)\n", unknown_register_7, machine().describe_context()); 
-	// 										return unknown_register_7; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { 
-	// 										LOG("write ur7 = 0x%x (%s)\n", data, machine().describe_context());
-	// 										unknown_register_7 = data; }));
-	// map(0x1e805010, 0x1e805013).lrw32(NAME([this]()
-	// 									   { return unknown_register_8; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { unknown_register_8 = data; }));
-	// map(0x1e805014, 0x1e805017).lrw32(NAME([this]()
-	// 									   { return unknown_register_9; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { unknown_register_9 = data; }));
-	// map(0x1e805018, 0x1e80501b).lrw32(NAME([this]()
-	// 									   { return unknown_register_10; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { unknown_register_10 = data; }));
-	// map(0x1e80501c, 0x1e80501f).lrw32(NAME([this]()
-	// 									   { return unknown_register_11; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { unknown_register_11 = data; }));
-	// map(0x1e80502c, 0x1e80502f).lrw32(NAME([this]()
-	// 									   { 
-	// 										LOG("read ur12, returning 0x%x (%s)\n", unknown_register_12, machine().describe_context()); 
-	// 										return unknown_register_12; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   { 
-	// 										LOG("write ur12 = 0x%x (%s)\n", data, machine().describe_context());
-	// 										unknown_register_12 = data; }));
-	// map(0x1e806000, 0x1e80600f).ram();
-	// map(0x1e80600c, 0x1e80600f).lrw32(NAME([this]() // wtf is this - bp bfc02280 to get past whatever this is
-	// 									   { 
-	// 											// machine().debug_break();
-	// 											LOG("read ur13, returning 0x%x (%s)\n", unknown_register_13, machine().describe_context());
-	// 											return unknown_register_13;
-	// 										}),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 										{
-	// 											LOG("write ur13 = 0x%x (%s)\n", data, machine().describe_context());
-	// 											unknown_register_13 = data;
-	// 										}));
-
-	// //map(0x1e807004, 0x1e807007).lr32(NAME([]() { return 0x00; }));
-	// // map(0x1e807008, 0x1e80700b).lr32(NAME([]() { return 0x00; }));
-
-	// map(0x1e807500, 0x1e8075ff)
-	// 	.ram(); // used to go to 777f
-
-	// map(0x1e805028, 0x1e80502b).lrw32(NAME([this](offs_t offset)
-	// 									   {
-	// 	LOG("attempt to read other 0x%x (%s)\n", offset, machine().describe_context());
-	// 	return 0x0; }),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 									   {
-	// 											LOG("write other 0x%x = 0x%x (%s)\n", offset, data, machine().describe_context());
-	// 											m_debug_ram_2->write(data * 4, 0); // yeah, this is weird af. Self test? Queue? who tf knows
-	// 											m_debug_ram_2->write(data * 4 + 1, 0); // TODO: maybe should be the other bytes of data, but I'll deal with it later
-	// 											m_debug_ram_2->write(data * 4 + 2, 0);
-	// 											m_debug_ram_2->write(data * 4 + 3, data); }));
-	// map(0x1e807600, 0x1e80767f).lrw8(NAME([this](offs_t offset)
-	// 										{ 
-	// 											//machine().debug_break();
-	// 											uint8_t val = m_debug_ram_2->read(offset);
-	// 											LOG("read offset 0x%x, returning 0x%x (%s)\n", offset, val, machine().describe_context());
-	// 											return val;
-	// 										}),
-	// 								 NAME([this](offs_t offset, uint8_t data)
-	// 										{
-	// 											LOG("write nonsense = 0x%x (%s)\n", data, machine().describe_context());
-	// 											m_debug_ram_2->write(offset, data); 
-	// 										})); // Reads this and expects to get back out 0x1e805028 written value back (with MSB unset), but acts as RAM before that loc is written.. If that passes, break at bfc02438 and add RAM to 1e807010
-	// map(0x1e807680, 0x1e80777f).ram();
-	// map(0x1e807010, 0x1e80701f).ram();
-
-	// map(0x1e4a0008, 0x1e4a000b).lrw32(NAME([this]()
-	// 										{
-	// 											// machine().debug_break();
-	// 											LOG("read clock register, returning 0x%x (%s)\n", clock_register, machine().describe_context());
-	// 											return clock_register;
-	// 										}),
-	// 								  NAME([this](offs_t offset, uint32_t data)
-	// 										{
-	// 											LOG("write clock_register = 0x%x (%s)\n", data, machine().describe_context());
-	// 												// NetBSD sets this to 0x80 when setting up - what frequency does this run at? How is this different from the other timer?
-	// 												// This feels like a complete hack, either that or I am missing something
-	// 											clock_register = data;
-	// 											if (data == 0x80) // TODO: what is this value actually signaling?
-	// 											{
-	// 												LOG("Enabling timer! Value = 0x%x\n", data);
-	// 												m_timer0_timer->adjust(attotime::zero, 0, attotime::from_hz(100));
-	// 											}
-	// 											else
-	// 											{
-	// 												LOG("Disabling timer! Value = 0x%x\n", data);
-	// 												m_timer0_timer->adjust(attotime::never);
-	// 											}
-	// 										}));
-
-	// // framebuffer
-	// //map(0xf0f00e00, 0xf0f00e03).lr32(NAME([]() { return 0x10; }));
-
-	// map(0xf0200000, 0xf02fffff).ram();
-	// map(0xf0500000, 0xf05fffff).ram();
-	// map(0xf0700000, 0xf07fffff).ram();
-	// map(0xf0f00e00, 0xf0f00e03).lr32(NAME([]()
-	// 									  { return 0x10; }));
-	
-	// // audio
-	// map(0x1e460000, 0x1e460003).lr32(NAME([]()
-	// 									  { return 0x80000000; }));
 }
 
 // u16 ews4800_r3k_state::lance_r(offs_t offset, u16 mem_mask)
@@ -879,7 +402,7 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 
 u32 ews4800_r3k_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 	{
-		m_bt459->screen_update(screen, bitmap, cliprect, m_vram->pointer());
+		m_bt459->screen_update(screen, bitmap, cliprect, m_vram[1]->pointer());
 
 		return 0;
 	}
@@ -967,15 +490,12 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 
 	// MK48T08(config, m_rtc);
 	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
-	// m_screen->set_raw(107'500'000, 1504, (296 + 20), (1184 + 296 + 20), 920, 34, (884 + 34)); // just copy_pasted everything but the clock from gt.cpp for now
-	// 1280 x 1024
-	//m_screen->set_raw(107'500'000, 1504, 20, 1504 - 204, 1124, 34, 1124 - 34);
-	//m_screen->set_raw(107'500'000, 1280 + 29, 296, 1280 + 296, 1124, 34, 1024 + 34);
-	m_screen->set_raw(107'500'000, 2048, 0, 2048, 1024, 0, 1024);
-	
+	// 1280 x 1024 (timings lifted from MIPS Magnum, which uses the same resolution but different pixclock, which means the cursor is a little off until that is fixed)
+	m_screen->set_raw(107'500'000, 1688, 248, 1528, 1066, 38, 1062);
 	m_screen->set_screen_update(FUNC(ews4800_r3k_state::screen_update));
 	BT459(config, m_bt459, 107'500'000);
-	RAM(config, m_vram, 0).set_default_size("2M");
+	RAM(config, m_vram[0], 0).set_default_size("2M");
+	RAM(config, m_vram[1], 0).set_default_size("2M");
 }
 
 ROM_START(ews4800_210)
