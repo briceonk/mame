@@ -335,7 +335,7 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 			int row = offset / 2048;
 			if (column < 1280 && row < 1024)
 			{
-				 m_vram[1]->write(0x500 * row + column, data);
+				 m_vram[1]->write(1280 * row + column, data);
 			}
 		}));
 	
