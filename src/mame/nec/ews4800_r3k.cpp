@@ -339,8 +339,6 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 			}
 		}));
 	
-	map(0x1fbe0060, 0x1fbe0063); // DMA controller
-
 	// map(0x10c00000, 0x10c7ffff).lrw8(NAME([this](offs_t offset){ return m_vram->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram->write(offset, 0); })); // guess, block write
 
 	map(0x15f00e00, 0x15f00e03).lr32(NAME([]() { return 0x10;})); // fb present?
@@ -349,6 +347,11 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 		.rw(m_scc[0], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w))
 		.umask32(0xff000000);
 	map(0x1b011000, 0x1b01100f).rw(m_scc[1], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)).umask32(0xff000000);
+
+	// DMAC
+	map(0x1fbe0060, 0x1fbe0067).ram();
+	map(0x1fbe00a0, 0x1fbe00a7).ram();
+	map(0x1fbe00e0, 0x1fbe00e7).ram();
 }
 
 // u16 ews4800_r3k_state::lance_r(offs_t offset, u16 mem_mask)
@@ -490,8 +493,11 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 
 	// MK48T08(config, m_rtc);
 	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
-	// 1280 x 1024 (timings lifted from MIPS Magnum, which uses the same resolution but different pixclock, which means the cursor is a little off until that is fixed)
-	m_screen->set_raw(107'500'000, 1688, 248, 1528, 1066, 38, 1062);
+	// 1280 x 1024
+	// TODO: current timings estimated based on MIPS Magnum (which uses the same resolution but has a slightly different pixclock)
+	//       and the default position of the NEC monitor ROM cursor compared to real hardware.
+	//       Need to figure out how the math here actually is determined
+	m_screen->set_raw(107'500'000, 1688, 350, 1280 + 350, 1100, 52, 1024 + 52);
 	m_screen->set_screen_update(FUNC(ews4800_r3k_state::screen_update));
 	BT459(config, m_bt459, 107'500'000);
 	RAM(config, m_vram[0], 0).set_default_size("2M");
