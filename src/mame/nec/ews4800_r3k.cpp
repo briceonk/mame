@@ -79,9 +79,9 @@ protected:
 	// address maps
 	void cpu_map(address_map &map);
 
-	// u16 lance_r(offs_t offset, u16 mem_mask = 0xffff);
-	// void lance_w(offs_t offset, u16 data, u16 mem_mask = 0xffff);
-	// void lance_irq(int state);
+	u16 lance_r(offs_t offset, u16 mem_mask = 0xffff);
+	void lance_w(offs_t offset, u16 data, u16 mem_mask = 0xffff);
+	void lance_irq(int state);
 	// void scsi_irq(int state);
 	// void scsi_drq_w(int state);
 
@@ -134,7 +134,7 @@ private:
 	uint8_t picnic_status_r(offs_t offset);
 	void picnic_mask_w(offs_t offset, uint8_t data);
 	uint8_t picnic_mask_r(offs_t offset);
-	// void generic_irq_w(uint8_t irq, uint8_t mask, int state);
+	void generic_irq_w(uint8_t irq, uint8_t mask, int state);
 
 	// // Hardware timer TIMER0 (10ms period)
 	// // TODO: Is this programmable somehow? 100Hz is what the NetBSD kernel expects.
@@ -142,7 +142,7 @@ private:
 	// TIMER_CALLBACK_MEMBER(timer0_clock);
 	// void timer0_w(offs_t offset, uint32_t data);
 
-	// // Debug
+	// Debug
 	void patch_rom(address_map &map);
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 };
@@ -169,93 +169,6 @@ private:
 // 	}
 // }
 
-// void ews4800_r3k_state::intc_clear_w(offs_t offset, uint32_t data)
-// {
-// 	// This is mostly speculation from how the monitor ROM tests the interrupt controller
-// 	// Identify interrupt status byte
-// 	if(data != 0x8000007c) // don't log timer interrupt
-// 	{
-// 		LOG("intc_clear w 0x%x - ", data);
-// 	}
-// 	uint32_t val = 0;
-// 	uint32_t byteval = data & 0xf;
-// 	if (byteval == 0xc)
-// 	{
-// 		val = 0x8;
-// 	}
-// 	else if (byteval == 0x8)
-// 	{
-// 		val = 0x4;
-// 	}
-// 	else if (byteval == 0x4)
-// 	{
-// 		val = 0x2;
-// 	}
-// 	else if (byteval == 0x0)
-// 	{
-// 		val = 0x1;
-// 	}
-
-// 	// Get 1 on bit to set or clear using the status byte
-// 	val = val << (((data & 0xf0) >> 4) * 4);
-
-// 	// set or clear?
-// 	if (data & 0x80000000)
-// 	{
-// 		intc_status |= val;
-// 	}
-// 	else
-// 	{
-// 		intc_status &= ~val;
-// 	}
-
-// 	// Refresh interrupt state
-// 	if (intc_status != 0x80000000) // don't log timer interrupt
-// 	{
-// 		LOG(" update status to 0x%x (%s)\n", intc_status, machine().describe_context());
-// 	}
-// 	int_check();
-// }
-
-// uint32_t ews4800_r3k_state::intc_status_r(offs_t offset)
-// {
-// 	LOG("intc_status r 0x%x (%s)\n", intc_status, machine().describe_context());
-// 	return intc_status;
-// }
-
-// void ews4800_r3k_state::intc_mask_w(offs_t offset, uint32_t data)
-// {
-// 	LOG("intc_mask w 0x%x (%s)\n", data, machine().describe_context());
-// 	intc_mask = data;
-// 	int_check();
-// }
-
-// uint32_t ews4800_r3k_state::intc_mask_r(offs_t offset)
-// {
-// 	LOG("intc_mask r 0x%x (%s)\n", intc_mask, machine().describe_context());
-// 	return intc_mask;
-// }
-
-// /*
-//  * int_check
-//  *
-//  * Observes the platform state and updates the R4400's interrupt lines if needed.
-//  */
-// void ews4800_r3k_state::int_check()
-// {
-// 	for (int i = 0; i < 6; i++)
-// 	{
-// 		bool state = (intc_status & interrupt_masks[i]) && (intc_mask & interrupt_masks[i]);
-
-// 		if (m_int_state[i] != state)
-// 		{
-// 			LOG("Setting CPU input line %d to %d\n", interrupt_map[i], state ? 1 : 0);
-// 			m_int_state[i] = state;
-// 			m_cpu->set_input_line(interrupt_map[i], state ? 1 : 0);
-// 		}
-// 	}
-// }
-
 // // TODO: fix name, I copied this from my NWS-5000X driver
 // TIMER_CALLBACK_MEMBER(ews4800_r3k_state::timer0_clock)
 // {
@@ -264,31 +177,30 @@ private:
 
 uint8_t ews4800_r3k_state::picnic_status_r(offs_t offset)
 {
-	LOGMASKED(LOG_ALL_INTERRUPT, "picnic_status_r: PICNIC INT%d = 0x%x\n", offset, m_picnic_status[offset]);
+	LOGMASKED(LOG_ALL_INTERRUPT, "picnic_status_r: PICNIC INT%d = 0x%x (%s)\n", offset, m_picnic_status[offset], machine().describe_context());
 	return m_picnic_status[offset];
 }
 
 void ews4800_r3k_state::picnic_status_w(offs_t offset, uint8_t data)
 {
-	LOGMASKED(LOG_INTERRUPT, "picnic_status_w: PICNIC INT%d = 0x%x\n", offset, data);
+	LOGMASKED(LOG_INTERRUPT, "picnic_status_w: PICNIC INT%d = 0x%x (%s)\n", offset, data, machine().describe_context());
 	m_picnic_status[offset] = data;
 	int_check();
 }
 
 uint8_t ews4800_r3k_state::picnic_mask_r(offs_t offset)
 {
-	LOGMASKED(LOG_ALL_INTERRUPT, "picnic_mask_r: PICNIC MASK%d = 0x%x\n", offset, m_picnic_mask[offset]);
+	LOGMASKED(LOG_ALL_INTERRUPT, "picnic_mask_r: PICNIC MASK%d = 0x%x (%s)\n", offset, m_picnic_mask[offset], machine().describe_context());
 	return m_picnic_mask[offset];
 }
 
 void ews4800_r3k_state::picnic_mask_w(offs_t offset, uint8_t data)
 {
-	LOGMASKED(LOG_INTERRUPT, "picnic_mask_w: PICNIC MASK%d = 0x%x\n", offset, data);
+	LOGMASKED(LOG_INTERRUPT, "picnic_mask_w: PICNIC MASK%d = 0x%x (%s)\n", offset, data, machine().describe_context());
 	m_picnic_mask[offset] = data;
 	int_check();
 }
 
-/*
 void ews4800_r3k_state::generic_irq_w(uint8_t irq, uint8_t mask, int state)
 {
 	LOGMASKED(LOG_INTERRUPT, "generic_irq_w: PICNIC INT%d IRQ %d set to %d\n", irq, mask, state);
@@ -302,12 +214,10 @@ void ews4800_r3k_state::generic_irq_w(uint8_t irq, uint8_t mask, int state)
 	}
 	int_check();
 }
-*/
 
 void ews4800_r3k_state::int_check()
 {
-	// The R3000 series has 6 bits in the interrupt register
-	// These map to the 6 PICNIC interrupt groups
+	// TODO: NMI
 	for (int i = 0; i < 6; i++)
 	{
 		bool state = m_picnic_status[i] & m_picnic_mask[i]; // TODO: mask is specific bits? Assume so for now
@@ -370,6 +280,14 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x1fbe0060, 0x1fbe0067).ram();
 	map(0x1fbe00a0, 0x1fbe00a7).ram();
 	map(0x1fbe00e0, 0x1fbe00e7).ram();
+	map(0x1fbe0028, 0x1fbe0029).lr16(NAME([]() { return 0x4; }));
+	map(0x1fbe0068, 0x1fbe0069).lr16(NAME([]() { return 0x4; }));
+	map(0x1fbe00a8, 0x1fbe00a9).lr16(NAME([]() { return 0x4; }));
+	map(0x1fbe00e8, 0x1fbe00e9).lr16(NAME([]() { return 0x404; }));
+	map(0x1fbe007c, 0x1fbe007f).lr32(NAME([]() { return 0x1800; })); // TODO: mrom only reads one byte?
+
+	// LANCE
+	map(0x1fbe0000, 0x1fbe0007).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
 
 	// GA (framebuffer)
 	map(0x15f00e00, 0x15f00e03).lr32(NAME([]() { return 0x10;})); // fb present? monitor ROM needs this to use the right GA offsets for the RAMDAC and such
@@ -397,28 +315,21 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x15f00c50, 0x15f00c5f).m(m_bt459, FUNC(bt459_device::map)).umask32(0xff);
 }
 
-// u16 ews4800_r3k_state::lance_r(offs_t offset, u16 mem_mask)
-// {
-// 	return m_cpu->space(0).read_word(offset);
-// }
+u16 ews4800_r3k_state::lance_r(offs_t offset, u16 mem_mask)
+{
+	return m_cpu->space(0).read_word(offset);
+}
 
-// void ews4800_r3k_state::lance_w(offs_t offset, u16 data, u16 mem_mask)
-// {
-// 	m_cpu->space(0).write_word(offset, data);
-// }
+void ews4800_r3k_state::lance_w(offs_t offset, u16 data, u16 mem_mask)
+{
+	m_cpu->space(0).write_word(offset, data);
+}
 
-// void ews4800_r3k_state::lance_irq(int state)
-// {
-// 	LOG("Got IRQ from LANCE 0x%x\n", state);
-// 	if(!state)
-// 	{
-// 		asob_dma_status |= 0x1;
-// 	}
-// 	else
-// 	{
-// 		asob_dma_status &= ~0x1;
-// 	}
-// }
+void ews4800_r3k_state::lance_irq(int state)
+{
+	LOG("Got IRQ from LANCE 0x%x\n", state);
+	generic_irq_w(1, 0x40, !state);
+}
 
 // void ews4800_r3k_state::scsi_irq(int state)
 // {
@@ -507,9 +418,9 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 
 	// // ethernet
 	AM7990(config, m_net);
-	// m_net->intr_out().set(FUNC(ews4800_r3k_state::lance_irq));
-	// m_net->dma_in().set(FUNC(ews4800_r3k_state::lance_r));
-	// m_net->dma_out().set(FUNC(ews4800_r3k_state::lance_w));
+	m_net->intr_out().set(FUNC(ews4800_r3k_state::lance_irq));
+	m_net->dma_in().set(FUNC(ews4800_r3k_state::lance_r));
+	m_net->dma_out().set(FUNC(ews4800_r3k_state::lance_w));
 
 	// // mouse on channel A, keyboard on channel B?
 	SCC85C30(config, m_scc[0], 4.915200_MHz_XTAL); // TODO: clock unconfirmed
