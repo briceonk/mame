@@ -143,7 +143,7 @@ private:
 	// void timer0_w(offs_t offset, uint32_t data);
 
 	// // Debug
-	// void patch_rom(address_map &map);
+	void patch_rom(address_map &map);
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 };
 
@@ -337,13 +337,22 @@ void ews4800_r3k_state::init()
 	m_cpu->space(0).install_ram(0x00000000, m_ram->mask(), m_ram->pointer());
 }
 
+void ews4800_r3k_state::patch_rom(address_map &map)
+{
+	// patch out small portion of memory test that relies on cache
+	map(0x1fc04704, 0x1fc04707).lr32(NAME([](){ return 0x0; })); 
+	map(0x1fc047b0, 0x1fc047b3).lr32(NAME([](){ return 0x0; }));
+
+	// Completely skip cache test, it hangs
+	map(0x1fc04df4, 0x1fc04df7).lr32(NAME([](){ return 0x1420023e; })); // bne $r0 $r1 $bfc056f0
+	map(0x1fc04df8, 0x1fc04dfb).lr32(NAME([](){ return 0x0;}));
+}
+
 void ews4800_r3k_state::cpu_map(address_map &map)
 {
 	map.unmap_value_low();
 	map(0x1fc00000, 0x1fc3ffff).rom().region("eprom", 0);
-
-	map(0x1fc04704, 0x1fc04707).lr8(NAME([](){ return 0x0; })); // patch out memory test that relies on cache
-	map(0x1fc047b0, 0x1fc047b3).lr8(NAME([](){ return 0x0; })); // patch out memory test that relies on cache
+	patch_rom(map);
 
 	// PICNIC interrupt controller
 	map(0x1b000000, 0x1b000013).rw(FUNC(ews4800_r3k_state::picnic_status_r), FUNC(ews4800_r3k_state::picnic_status_w)).umask32(0xff000000);
