@@ -35,9 +35,10 @@
 
 #include "debugger.h"
 
-#define LOG_GENERAL (1U << 0)
+#define LOG_INTERRUPT (1U << 1)
+#define LOG_ALL_INTERRUPT (1U << 2)
 
-#define VERBOSE LOG_GENERAL
+#define VERBOSE (LOG_GENERAL|LOG_INTERRUPT|LOG_ALL_INTERRUPT)
 #include "logmacro.h"
 
 namespace {
@@ -61,7 +62,7 @@ public:
 		, m_vram(*this, "vram%u", 0U)
 		// , m_scsibus(*this, "scsi")
 		// , m_scsi(*this, "scsi:7:ncr53c96")
-		// , m_net(*this, "net")
+		, m_net(*this, "net")
 	{
 	}
 
@@ -84,7 +85,7 @@ protected:
 	// void scsi_irq(int state);
 	// void scsi_drq_w(int state);
 
-	// void int_check();
+	void int_check();
 
 private:
 	// processors and memory
@@ -107,11 +108,14 @@ private:
 	
 	// required_device<nscsi_bus_device> m_scsibus;
 	// required_device<ncr53c94_device> m_scsi;
-	// required_device<am7990_device> m_net;
+	required_device<am7990_device> m_net;
 
-	// // internal state
-	// uint32_t intc_status = 0;
-	// uint32_t intc_mask = 0;
+	// PICNIC interrupt controller
+	bool m_int_state[6] = {false, false, false, false, false, false};
+	uint8_t m_picnic_mask[6] = {0, 0, 0, 0, 0, 0};
+	uint8_t m_picnic_status[6] = {0, 0, 0, 0, 0, 0}; // TODO: NMI
+	static constexpr int interrupt_map[6] = {0, 1, 2, 3, 4, 5};
+
 	// uint32_t asob_int_mask = 0;
 	// uint32_t asob_int_status = 0;
 	// uint32_t asob_dma_int = 0;
@@ -122,51 +126,15 @@ private:
 	// uint32_t clock_register = 0;
 	// uint32_t vmechk = 0x0;
 
-	// // SCSI DMA
-	// uint32_t scsi_dma_addr = 0;
-	// uint32_t scsi_dma_tcount = 0;
-	// uint32_t scsi_dma_cmd = 0; // not 100% sure about this one
-	// emu_timer *m_dma_check;
-	// TIMER_CALLBACK_MEMBER(dma_check);
-	// bool scsi_drq;
-
-	// uint32_t unknown_register_0 = 0x0;
-	// uint32_t unknown_register_01 = 0x0;
-	// uint32_t unknown_register_02 = 0x0;
-	// uint32_t unknown_register_1 = 0x707;
-	// uint32_t unknown_register_3 = 0x1000;
-	// uint32_t unknown_register_4 = 0x1;
-	// uint32_t unknown_register_5 = 0x1;
-	// uint32_t unknown_register_6 = 0x1;
-	// uint32_t unknown_register_7 = 0x1;
-	// uint32_t unknown_register_8 = 0x1;
-	// uint32_t unknown_register_9 = 0x1;
-	// uint32_t unknown_register_10 = 0x1;
-	// uint32_t unknown_register_11 = 0x1;
-	// uint32_t unknown_register_12 = 0x80000000;
-	// uint32_t unknown_register_13 = 0;
-	// uint32_t unknown_register_14 = 0;
-	// uint32_t unknown_register_15 = 0;
-
-	// // These masks are based on what the monitor ROM expects the resulting CPU interrupt to be set.
-	// static constexpr uint32_t INTC_INT5 = 0xf8000000;
-	// static constexpr uint32_t INTC_INT4 = 0x07c00000;
-	// static constexpr uint32_t INTC_INT3 = 0x003e0000;
-	// static constexpr uint32_t INTC_INT2 = 0x0001f000;
-	// static constexpr uint32_t INTC_INT1 = 0x00000fc0;
-	// static constexpr uint32_t INTC_INT0 = 0x0000003f;
-	// uint32_t interrupt_masks[6] = {INTC_INT0, INTC_INT1, INTC_INT2, INTC_INT3, INTC_INT4, INTC_INT5};
-	// bool m_int_state[6] = {false, false, false, false, false, false};
-	// const int interrupt_map[6] = {0, 1, 2, 3, 4, 5};
-
-	// // INTC interrupt controller
-	// // The EWS4800/310 appears to use the same interrupt controller as the TRA2 board (EWS4800/360, another APbus model)
-	// // https://github.com/NetBSD/src/blob/05082e19134c05f2f4b6eca73223cdc6b5ab09bf/sys/arch/ews4800mips/include/sbd_tr2a.h
-	// // https://github.com/NetBSD/src/blob/05082e19134c05f2f4b6eca73223cdc6b5ab09bf/sys/arch/ews4800mips/ews4800mips/tr2a_intr.c
-	// void intc_clear_w(offs_t offset, uint32_t data);
-	// uint32_t intc_status_r(offs_t offset);
-	// void intc_mask_w(offs_t offset, uint32_t data);
-	// uint32_t intc_mask_r(offs_t offset);
+	// PICNIC interrupt controller
+	// The EWS4800/310 appears to use the same interrupt controller as the TR2 board (EWS4800/350)
+	// https://github.com/NetBSD/src/blob/trunk/sys/arch/ews4800mips/include/sbd_tr2.h
+	// https://github.com/NetBSD/src/blob/trunk/sys/arch/ews4800mips/ews4800mips/tr2_intr.c
+	void picnic_status_w(offs_t offset, uint8_t data);
+	uint8_t picnic_status_r(offs_t offset);
+	void picnic_mask_w(offs_t offset, uint8_t data);
+	uint8_t picnic_mask_r(offs_t offset);
+	// void generic_irq_w(uint8_t irq, uint8_t mask, int state);
 
 	// // Hardware timer TIMER0 (10ms period)
 	// // TODO: Is this programmable somehow? 100Hz is what the NetBSD kernel expects.
@@ -294,6 +262,65 @@ private:
 // 	intc_clear_w(0, 0x8000007c);
 // }
 
+uint8_t ews4800_r3k_state::picnic_status_r(offs_t offset)
+{
+	LOGMASKED(LOG_ALL_INTERRUPT, "picnic_status_r: PICNIC INT%d = 0x%x\n", offset, m_picnic_status[offset]);
+	return m_picnic_status[offset];
+}
+
+void ews4800_r3k_state::picnic_status_w(offs_t offset, uint8_t data)
+{
+	LOGMASKED(LOG_INTERRUPT, "picnic_status_w: PICNIC INT%d = 0x%x\n", offset, data);
+	m_picnic_status[offset] = data;
+	int_check();
+}
+
+uint8_t ews4800_r3k_state::picnic_mask_r(offs_t offset)
+{
+	LOGMASKED(LOG_ALL_INTERRUPT, "picnic_mask_r: PICNIC MASK%d = 0x%x\n", offset, m_picnic_mask[offset]);
+	return m_picnic_mask[offset];
+}
+
+void ews4800_r3k_state::picnic_mask_w(offs_t offset, uint8_t data)
+{
+	LOGMASKED(LOG_INTERRUPT, "picnic_mask_w: PICNIC MASK%d = 0x%x\n", offset, data);
+	m_picnic_mask[offset] = data;
+	int_check();
+}
+
+/*
+void ews4800_r3k_state::generic_irq_w(uint8_t irq, uint8_t mask, int state)
+{
+	LOGMASKED(LOG_INTERRUPT, "generic_irq_w: PICNIC INT%d IRQ %d set to %d\n", irq, mask, state);
+	if (state)
+	{
+		m_picnic_status[irq] |= mask;
+	}
+	else
+	{
+		m_picnic_status[irq] &= ~mask;
+	}
+	int_check();
+}
+*/
+
+void ews4800_r3k_state::int_check()
+{
+	// The R3000 series has 6 bits in the interrupt register
+	// These map to the 6 PICNIC interrupt groups
+	for (int i = 0; i < 6; i++)
+	{
+		bool state = m_picnic_status[i] & m_picnic_mask[i]; // TODO: mask is specific bits? Assume so for now
+
+		if (m_int_state[i] != state)
+		{
+			LOGMASKED(LOG_ALL_INTERRUPT, "Setting CPU input line %d to %d\n", interrupt_map[i], state ? 1 : 0);
+			m_int_state[i] = state;
+			m_cpu->set_input_line(interrupt_map[i], state ? 1 : 0);
+		}
+	}
+}
+
 void ews4800_r3k_state::machine_start()
 {
 	// m_timer0_timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(ews4800_r3k_state::timer0_clock), this));
@@ -318,10 +345,28 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x1fc04704, 0x1fc04707).lr8(NAME([](){ return 0x0; })); // patch out memory test that relies on cache
 	map(0x1fc047b0, 0x1fc047b3).lr8(NAME([](){ return 0x0; })); // patch out memory test that relies on cache
 
-	map(0x1b012000, 0x1b0120ff).rw(m_rtc, FUNC(mc146818_device::read_direct), FUNC(mc146818_device::write_direct)).umask32(0xff000000); // extends past this for rest of NVRAM??
-	map(0x10000000, 0x101fffff).lrw8(NAME([this](offs_t offset){ return m_vram[0]->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram[0]->write(offset, data); })); // guess
+	// PICNIC interrupt controller
+	map(0x1b000000, 0x1b000013).rw(FUNC(ews4800_r3k_state::picnic_status_r), FUNC(ews4800_r3k_state::picnic_status_w)).umask32(0xff000000);
+	map(0x1b001000, 0x1b001013).rw(FUNC(ews4800_r3k_state::picnic_mask_r), FUNC(ews4800_r3k_state::picnic_mask_w)).umask32(0xff000000);
 
-  //map(0x10400000, 0x1057ffff).lrw8(NAME([this](offs_t offset)
+
+	map(0x1b012000, 0x1b0120ff).rw(m_rtc, FUNC(mc146818_device::read_direct), FUNC(mc146818_device::write_direct)).umask32(0xff000000); // extends past this for rest of NVRAM??
+
+	map(0x1b010000, 0x1b01000f)
+		.rw(m_scc[0], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w))
+		.umask32(0xff000000);
+	map(0x1b011000, 0x1b01100f).rw(m_scc[1], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)).umask32(0xff000000);
+
+	// DMAC
+	map(0x1fbe0060, 0x1fbe0067).ram();
+	map(0x1fbe00a0, 0x1fbe00a7).ram();
+	map(0x1fbe00e0, 0x1fbe00e7).ram();
+
+	// GA (framebuffer)
+	map(0x15f00e00, 0x15f00e03).lr32(NAME([]() { return 0x10;})); // fb present? monitor ROM needs this to use the right GA offsets for the RAMDAC and such
+	map(0x10000000, 0x101fffff).noprw(); // TODO: what is this region? Does it provide some kind of view into VRAM?
+		// .lrw8(NAME([this](offs_t offset){ return m_vram[0]->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram[0]->write(offset, data); }));
+
 	map(0x10400000, 0x105fffff).lrw8(NAME([this](offs_t offset)
 		{ 
 			return m_vram[0]->read(offset);
@@ -339,19 +384,8 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 			}
 		}));
 	
-	// map(0x10c00000, 0x10c7ffff).lrw8(NAME([this](offs_t offset){ return m_vram->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram->write(offset, 0); })); // guess, block write
-
-	map(0x15f00e00, 0x15f00e03).lr32(NAME([]() { return 0x10;})); // fb present?
+	map(0x10c00000, 0x10c7ffff).noprw(); // TODO: probably GA block write	
 	map(0x15f00c50, 0x15f00c5f).m(m_bt459, FUNC(bt459_device::map)).umask32(0xff);
-	map(0x1b010000, 0x1b01000f)
-		.rw(m_scc[0], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w))
-		.umask32(0xff000000);
-	map(0x1b011000, 0x1b01100f).rw(m_scc[1], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)).umask32(0xff000000);
-
-	// DMAC
-	map(0x1fbe0060, 0x1fbe0067).ram();
-	map(0x1fbe00a0, 0x1fbe00a7).ram();
-	map(0x1fbe00e0, 0x1fbe00e7).ram();
 }
 
 // u16 ews4800_r3k_state::lance_r(offs_t offset, u16 mem_mask)
@@ -463,7 +497,7 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 	// 		});
 
 	// // ethernet
-	// AM7990(config, m_net);
+	AM7990(config, m_net);
 	// m_net->intr_out().set(FUNC(ews4800_r3k_state::lance_irq));
 	// m_net->dma_in().set(FUNC(ews4800_r3k_state::lance_r));
 	// m_net->dma_out().set(FUNC(ews4800_r3k_state::lance_w));
