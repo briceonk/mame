@@ -60,7 +60,7 @@ public:
 		, m_bt459(*this, "ramdac")
 		, m_vram(*this, "vram%u", 0U)
 		, m_scsibus(*this, "scsi")
-		, m_scsi(*this, "scsi:7:ncr53c96")
+		, m_scsi(*this, "scsi:7:ncr53c90a")
 		, m_net(*this, "net")
 		, m_fdc(*this, "fdc")
 	{
@@ -108,7 +108,7 @@ private:
 	required_device_array<ram_device, 2> m_vram; // shadow vram for reshaping for RAMDAC on the fly while maintaing CPU access coherency
 	
 	required_device<nscsi_bus_device> m_scsibus;
-	required_device<ncr53c94_device> m_scsi;
+	required_device<ncr53c90a_device> m_scsi;
 	required_device<am7990_device> m_net;
 	required_device<upd72065_device> m_fdc;
 
@@ -278,6 +278,7 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 
 	map(0x1b012000, 0x1b0120ff).rw(m_rtc, FUNC(mc146818_device::read_direct), FUNC(mc146818_device::write_direct)).umask32(0xff000000);
 	map(0x1b012084, 0x1b012087).lr32(NAME([](){ return 0x2000000; })); // Force SCSI boot
+	map(0x1b020000, 0x1b023fff).ram(); // TODO: convert to NVSRAM
 
 	map(0x1b010000, 0x1b01000f)
 		.rw(m_scc[0], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w))
@@ -297,7 +298,7 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x1fbe007c, 0x1fbe007f).lr32(NAME([]() { return 0x1800; })); // TODO: mrom only reads one byte?
 
 	// SCSI
-	map(0x1fbe0040, 0x1fbe0057).m(m_scsi, FUNC(ncr53c94_device::map)).umask16(0xff00);
+	map(0x1fbe0040, 0x1fbe0057).m(m_scsi, FUNC(ncr53c90a_device::map)).umask16(0xff00);
 
 	// LANCE
 	map(0x1fbe0000, 0x1fbe0007).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
@@ -421,12 +422,11 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 	NSCSI_CONNECTOR(config, "scsi:5", ews4800_scsi_devices, nullptr);
 	NSCSI_CONNECTOR(config, "scsi:6", ews4800_scsi_devices, nullptr);
 
-	// scsi host adapter (TODO: NCR53C96?)
-	NSCSI_CONNECTOR(config, "scsi:7").option_set("ncr53c96", NCR53C94).clock(24_MHz_XTAL).machine_config([this](device_t *device)
+	// TODO: actual clock frequency, this is a guess
+	NSCSI_CONNECTOR(config, "scsi:7").option_set("ncr53c90a", NCR53C90A).clock(32_MHz_XTAL / 2).machine_config([this](device_t *device)
 																										 {
-			ncr53c94_device &adapter = downcast<ncr53c94_device &>(*device);
+			ncr53c90a_device &adapter = downcast<ncr53c90a_device &>(*device);
 
-			adapter.set_busmd(ncr53c94_device::busmd_t::BUSMD_1);
 			adapter.irq_handler_cb().set(*this, FUNC(ews4800_r3k_state::scsi_irq));
 			adapter.drq_handler_cb().set(*this, FUNC(ews4800_r3k_state::scsi_drq_w)); 
 			});
