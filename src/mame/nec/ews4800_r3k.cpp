@@ -118,6 +118,11 @@ private:
 	uint8_t m_picnic_status[6] = {0, 0, 0, 0, 0, 0}; // TODO: NMI
 	static constexpr int interrupt_map[6] = {0, 1, 2, 3, 4, 5};
 
+	// DMA registers (guess)
+	uint32_t dma_address = 0;
+	uint32_t dma_transfer_count = 0;
+	uint32_t dma_command = 0;
+
 	// uint32_t asob_int_mask = 0;
 	// uint32_t asob_int_status = 0;
 	// uint32_t asob_dma_int = 0;
@@ -280,7 +285,9 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x1b011000, 0x1b01100f).rw(m_scc[1], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)).umask32(0xff000000);
 
 	// DMAC
-	map(0x1fbe0060, 0x1fbe0067).ram();
+	map(0x1fbe0060, 0x1fbe0063).lrw32([this]() { return dma_address; }, "dma_address_r", [this](offs_t offset, uint32_t data) { LOG("Set DMA address to 0x%x (%s)\n", data, machine().describe_context()); dma_address = data; }, "dma_address_w");
+	map(0x1fbe0064, 0x1fbe0067).lrw32([this]() { return dma_transfer_count; }, "dma_transfer_count_r", [this](offs_t offset, uint32_t data) { LOG("Set DMA transfer count to 0x%x (%s)\n", data, machine().describe_context()); dma_transfer_count = data; }, "dma_transfer_count_w");
+	map(0x1fbe0068, 0x1fbe006b).lrw32([this]() { return dma_command; }, "dma_command_r", [this](offs_t offset, uint32_t data) { LOG("Set DMA command to 0x%x (%s)\n", data, machine().describe_context()); dma_command = data; }, "dma_command_w");
 	map(0x1fbe00a0, 0x1fbe00a7).ram();
 	map(0x1fbe00e0, 0x1fbe00e7).ram();
 	map(0x1fbe0028, 0x1fbe0029).lr16(NAME([]() { return 0x4; }));
