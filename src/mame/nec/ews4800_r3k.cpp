@@ -24,8 +24,11 @@
 #include "machine/timekpr.h"
 #include "machine/ncr5390.h"
 #include "machine/mc146818.h"
+#include "machine/upd765.h"
 #include "video/bt459.h"
 #include "screen.h"
+#include "imagedev/floppy.h"
+#include "formats/pc_dsk.h"
 
 // busses and connectors
 #include "machine/nscsi_bus.h"
@@ -38,7 +41,7 @@
 #define LOG_INTERRUPT (1U << 1)
 #define LOG_ALL_INTERRUPT (1U << 2)
 
-#define VERBOSE (LOG_GENERAL|LOG_INTERRUPT|LOG_ALL_INTERRUPT)
+#define VERBOSE (LOG_GENERAL|LOG_INTERRUPT)
 #include "logmacro.h"
 
 namespace {
@@ -50,19 +53,16 @@ public:
 		: driver_device(mconfig, type, tag)
 		, m_cpu(*this, "cpu")
 		, m_ram(*this, "ram")
-		// , m_debug_ram(*this, "debug_ram")
-		// , m_debug_ram_2(*this, "debug_ram_2")
-		// , m_debug_ram_3(*this, "debug_ram_3")
-		// , m_rtc(*this, "rtc")
 		, m_scc(*this, "scc%u", 0U)
 		, m_serial(*this, "serial%u", 0U)
 		, m_rtc(*this, "rtc")
 		, m_screen(*this, "screen")
 		, m_bt459(*this, "ramdac")
 		, m_vram(*this, "vram%u", 0U)
-		// , m_scsibus(*this, "scsi")
-		// , m_scsi(*this, "scsi:7:ncr53c96")
+		, m_scsibus(*this, "scsi")
+		, m_scsi(*this, "scsi:7:ncr53c96")
 		, m_net(*this, "net")
+		, m_fdc(*this, "fdc")
 	{
 	}
 
@@ -82,8 +82,9 @@ protected:
 	u16 lance_r(offs_t offset, u16 mem_mask = 0xffff);
 	void lance_w(offs_t offset, u16 data, u16 mem_mask = 0xffff);
 	void lance_irq(int state);
-	// void scsi_irq(int state);
-	// void scsi_drq_w(int state);
+	void scsi_irq(int state);
+	void scsi_drq_w(int state);
+	void fdc_irq(int state);
 
 	void int_check();
 
@@ -106,9 +107,10 @@ private:
 	required_device<bt459_device> m_bt459;
 	required_device_array<ram_device, 2> m_vram; // shadow vram for reshaping for RAMDAC on the fly while maintaing CPU access coherency
 	
-	// required_device<nscsi_bus_device> m_scsibus;
-	// required_device<ncr53c94_device> m_scsi;
+	required_device<nscsi_bus_device> m_scsibus;
+	required_device<ncr53c94_device> m_scsi;
 	required_device<am7990_device> m_net;
+	required_device<upd72065_device> m_fdc;
 
 	// PICNIC interrupt controller
 	bool m_int_state[6] = {false, false, false, false, false, false};
@@ -254,7 +256,7 @@ void ews4800_r3k_state::patch_rom(address_map &map)
 	map(0x1fc047b0, 0x1fc047b3).lr32(NAME([](){ return 0x0; }));
 
 	// Completely skip cache test, it hangs
-	map(0x1fc04df4, 0x1fc04df7).lr32(NAME([](){ return 0x1420023e; })); // bne $r0 $r1 $bfc056f0
+	map(0x1fc04df4, 0x1fc04df7).lr32(NAME([](){ return 0x1420023e; })); // bne $r0 $r1 0xbfc056f0
 	map(0x1fc04df8, 0x1fc04dfb).lr32(NAME([](){ return 0x0;}));
 }
 
@@ -269,7 +271,8 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x1b001000, 0x1b001013).rw(FUNC(ews4800_r3k_state::picnic_mask_r), FUNC(ews4800_r3k_state::picnic_mask_w)).umask32(0xff000000);
 
 
-	map(0x1b012000, 0x1b0120ff).rw(m_rtc, FUNC(mc146818_device::read_direct), FUNC(mc146818_device::write_direct)).umask32(0xff000000); // extends past this for rest of NVRAM??
+	map(0x1b012000, 0x1b0120ff).rw(m_rtc, FUNC(mc146818_device::read_direct), FUNC(mc146818_device::write_direct)).umask32(0xff000000);
+	map(0x1b012084, 0x1b012087).lr32(NAME([](){ return 0x2000000; })); // Force SCSI boot
 
 	map(0x1b010000, 0x1b01000f)
 		.rw(m_scc[0], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w))
@@ -286,8 +289,14 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x1fbe00e8, 0x1fbe00e9).lr16(NAME([]() { return 0x404; }));
 	map(0x1fbe007c, 0x1fbe007f).lr32(NAME([]() { return 0x1800; })); // TODO: mrom only reads one byte?
 
+	// SCSI
+	map(0x1fbe0040, 0x1fbe0057).m(m_scsi, FUNC(ncr53c94_device::map)).umask16(0xff00);
+
 	// LANCE
 	map(0x1fbe0000, 0x1fbe0007).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
+
+	// Floppy disk controller
+	map(0x1fbe0080, 0x1fbe0087).m(m_fdc, FUNC(upd72065_device::map)).umask32(0xff000000);
 
 	// GA (framebuffer)
 	map(0x15f00e00, 0x15f00e03).lr32(NAME([]() { return 0x10;})); // fb present? monitor ROM needs this to use the right GA offsets for the RAMDAC and such
@@ -331,38 +340,37 @@ void ews4800_r3k_state::lance_irq(int state)
 	generic_irq_w(1, 0x40, !state);
 }
 
-// void ews4800_r3k_state::scsi_irq(int state)
-// {
-// 	LOG("Got IRQ from SCSI 0x%x\n", state);
-// 	if(state)
-// 	{
-// 		asob_dma_status |= 0x2;
-// 	}
-// 	else
-// 	{
-// 		asob_dma_status &= ~0x2;
-// 	}
-// }
+void ews4800_r3k_state::scsi_irq(int state)
+{
+	LOG("Got IRQ from SCSI 0x%x\n", state);
+	generic_irq_w(1, 0x20, state);
+}
 
-// void ews4800_r3k_state::scsi_drq_w(int state)
-// {
-// 	LOG("Got DRQ from SCSI 0x%x\n", state);
-// 	scsi_drq = state;
-// 	m_dma_check->adjust(attotime::zero);
-// }
+void ews4800_r3k_state::scsi_drq_w(int state)
+{
+	LOG("Got DRQ from SCSI 0x%x\n", state);
+	// scsi_drq = state;
+	// m_dma_check->adjust(attotime::zero);
+}
 
-// static void ews4800_scsi_devices(device_slot_interface &device)
-// {
-// 	device.option_add("harddisk", NSCSI_HARDDISK);
-// 	device.option_add("cdrom", NSCSI_CDROM);
-// }
+static void ews4800_scsi_devices(device_slot_interface &device)
+{
+	device.option_add("harddisk", NSCSI_HARDDISK);
+	device.option_add("cdrom", NSCSI_CDROM);
+}
+
+void ews4800_r3k_state::fdc_irq(int state)
+{
+	LOG("Got IRQ from FDC 0x%x\n", state);
+	generic_irq_w(0, 0x80, state);
+}
 
 u32 ews4800_r3k_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
-	{
-		m_bt459->screen_update(screen, bitmap, cliprect, m_vram[1]->pointer());
+{
+	m_bt459->screen_update(screen, bitmap, cliprect, m_vram[1]->pointer());
 
-		return 0;
-	}
+	return 0;
+}
 
 /*
  * irq  function
@@ -396,31 +404,37 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 	// m_debug_ram_3->set_default_size("16K"); // waaaaaaay too big
 	// m_debug_ram_3->set_default_value(0xff);
 
-	// // scsi bus and devices
-	// NSCSI_BUS(config, m_scsibus);
-	// NSCSI_CONNECTOR(config, "scsi:0", ews4800_scsi_devices, "harddisk");
-	// NSCSI_CONNECTOR(config, "scsi:1", ews4800_scsi_devices, nullptr);
-	// NSCSI_CONNECTOR(config, "scsi:2", ews4800_scsi_devices, nullptr);
-	// NSCSI_CONNECTOR(config, "scsi:3", ews4800_scsi_devices, nullptr);
-	// NSCSI_CONNECTOR(config, "scsi:4", ews4800_scsi_devices, nullptr);
-	// NSCSI_CONNECTOR(config, "scsi:5", ews4800_scsi_devices, nullptr);
-	// NSCSI_CONNECTOR(config, "scsi:6", ews4800_scsi_devices, nullptr);
+	// scsi bus and devices
+	NSCSI_BUS(config, m_scsibus);
+	NSCSI_CONNECTOR(config, "scsi:0", ews4800_scsi_devices, "harddisk");
+	NSCSI_CONNECTOR(config, "scsi:1", ews4800_scsi_devices, nullptr);
+	NSCSI_CONNECTOR(config, "scsi:2", ews4800_scsi_devices, nullptr);
+	NSCSI_CONNECTOR(config, "scsi:3", ews4800_scsi_devices, nullptr);
+	NSCSI_CONNECTOR(config, "scsi:4", ews4800_scsi_devices, nullptr);
+	NSCSI_CONNECTOR(config, "scsi:5", ews4800_scsi_devices, nullptr);
+	NSCSI_CONNECTOR(config, "scsi:6", ews4800_scsi_devices, nullptr);
 
-	// // scsi host adapter (NCR53C96)
-	// NSCSI_CONNECTOR(config, "scsi:7").option_set("ncr53c96", NCR53C94).clock(24_MHz_XTAL).machine_config([this](device_t *device)
-	// 																									 {
-	// 		ncr53c94_device &adapter = downcast<ncr53c94_device &>(*device);
+	// scsi host adapter (TODO: NCR53C96?)
+	NSCSI_CONNECTOR(config, "scsi:7").option_set("ncr53c96", NCR53C94).clock(24_MHz_XTAL).machine_config([this](device_t *device)
+																										 {
+			ncr53c94_device &adapter = downcast<ncr53c94_device &>(*device);
 
-	// 		adapter.set_busmd(ncr53c94_device::busmd_t::BUSMD_1);
-	// 		adapter.irq_handler_cb().set(*this, FUNC(ews4800_r3k_state::scsi_irq));
-	// 		adapter.drq_handler_cb().set(*this, FUNC(ews4800_r3k_state::scsi_drq_w)); 
-	// 		});
+			adapter.set_busmd(ncr53c94_device::busmd_t::BUSMD_1);
+			adapter.irq_handler_cb().set(*this, FUNC(ews4800_r3k_state::scsi_irq));
+			adapter.drq_handler_cb().set(*this, FUNC(ews4800_r3k_state::scsi_drq_w)); 
+			});
 
 	// // ethernet
 	AM7990(config, m_net);
 	m_net->intr_out().set(FUNC(ews4800_r3k_state::lance_irq));
 	m_net->dma_in().set(FUNC(ews4800_r3k_state::lance_r));
 	m_net->dma_out().set(FUNC(ews4800_r3k_state::lance_w));
+
+	// Floppy disk controller
+	UPD72065(config, m_fdc, 8_MHz_XTAL, true, false); // TODO: actual clock rate?, ready, select?
+	m_fdc->intrq_wr_callback().set(FUNC(ews4800_r3k_state::fdc_irq));
+	// TODO: m_fdc->drq_wr_callback().set(FUNC(ews4800_r3k_state::fdc_drq));
+	FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
 
 	// // mouse on channel A, keyboard on channel B?
 	SCC85C30(config, m_scc[0], 4.915200_MHz_XTAL); // TODO: clock unconfirmed
@@ -445,7 +459,6 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 	// RTC (Dallas DS1387, which is an AT RTC + 4K NVRAM + embedded battery + embedded crystal)
 	MC146818(config, m_rtc, 32.768_kHz_XTAL);
 
-	// MK48T08(config, m_rtc);
 	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
 	// 1280 x 1024
 	// TODO: current timings estimated based on MIPS Magnum (which uses the same resolution but has a slightly different pixclock)
