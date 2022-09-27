@@ -41,7 +41,7 @@
 #define LOG_INTERRUPT (1U << 1)
 #define LOG_ALL_INTERRUPT (1U << 2)
 
-#define VERBOSE (LOG_GENERAL|LOG_INTERRUPT)
+#define VERBOSE (LOG_GENERAL|LOG_INTERRUPT|LOG_ALL_INTERRUPT)
 #include "logmacro.h"
 
 namespace {
@@ -92,9 +92,6 @@ private:
 	// processors and memory
 	required_device<r3000_device> m_cpu;
 	required_device<ram_device> m_ram;
-	// required_device<ram_device> m_debug_ram;
-	// required_device<ram_device> m_debug_ram_2;
-	// required_device<ram_device> m_debug_ram_3;
 
 	// // i/o devices
 	// required_device<mk48t08_device> m_rtc; // actually is a t18, which is equivalent per datasheet. MAME has the century and flags register set, but datasheet doesn't. Why?
@@ -122,6 +119,9 @@ private:
 	uint32_t dma_address = 0;
 	uint32_t dma_transfer_count = 0;
 	uint32_t dma_command = 0;
+	emu_timer *m_dma_check;
+	TIMER_CALLBACK_MEMBER(dma_check);
+	bool scsi_drq;
 
 	// uint32_t asob_int_mask = 0;
 	// uint32_t asob_int_status = 0;
@@ -154,27 +154,27 @@ private:
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 };
 
-// TIMER_CALLBACK_MEMBER(ews4800_r3k_state::dma_check)
-// {
-// 	LOG("scsi dma_check cmd = 0x%x drq = 0x%x\n", scsi_dma_cmd, scsi_drq);
-// 	if ((scsi_dma_cmd & 0x7) == 0x7 && scsi_drq) // TODO: DMA out?
-// 	{
-// 		// get byte from DMA source
-// 		const uint8_t data = m_scsi->dma_r();
-// 		LOG("scsi dma r 0x%x = 0x%x tcount 0x%x\n", scsi_dma_addr, data, scsi_dma_tcount);
-// 		m_cpu->space(0).write_byte(scsi_dma_addr, data);
-// 		++scsi_dma_addr;
-// 		--scsi_dma_tcount;
-// 		if (scsi_dma_tcount == 0)
-// 		{
-// 			// TODO: set IRQ
-// 		}
-// 		else
-// 		{
-// 			m_dma_check->adjust(attotime::zero);
-// 		}
-// 	}
-// }
+TIMER_CALLBACK_MEMBER(ews4800_r3k_state::dma_check)
+{
+	LOG("scsi dma_check cmd = 0x%x drq = 0x%x\n", dma_command, scsi_drq);
+	if (dma_command == 0x4000000 && scsi_drq) // TODO: DMA out?
+	{
+		// get byte from DMA source
+		const uint8_t data = m_scsi->dma_r();
+		LOG("scsi dma r 0x%x = 0x%x tcount 0x%x\n", dma_address, data, dma_transfer_count);
+		m_cpu->space(0).write_byte(dma_address, data);
+		++dma_address;
+		--dma_transfer_count;
+		if (dma_transfer_count == 0)
+		{
+			// TODO: set IRQ
+		}
+		else
+		{
+			m_dma_check->adjust(attotime::zero);
+		}
+	}
+}
 
 // // TODO: fix name, I copied this from my NWS-5000X driver
 // TIMER_CALLBACK_MEMBER(ews4800_r3k_state::timer0_clock)
@@ -241,7 +241,7 @@ void ews4800_r3k_state::int_check()
 void ews4800_r3k_state::machine_start()
 {
 	// m_timer0_timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(ews4800_r3k_state::timer0_clock), this));
-	// m_dma_check = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(ews4800_r3k_state::dma_check), this));
+	m_dma_check = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(ews4800_r3k_state::dma_check), this));
 }
 
 void ews4800_r3k_state::machine_reset()
@@ -357,8 +357,8 @@ void ews4800_r3k_state::scsi_irq(int state)
 void ews4800_r3k_state::scsi_drq_w(int state)
 {
 	LOG("Got DRQ from SCSI 0x%x\n", state);
-	// scsi_drq = state;
-	// m_dma_check->adjust(attotime::zero);
+	scsi_drq = state;
+	m_dma_check->adjust(attotime::zero);
 }
 
 static void ews4800_scsi_devices(device_slot_interface &device)
@@ -399,18 +399,6 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 	m_ram->set_default_size("16M");
 	//m_ram->set_extra_options("80M,144M"); // TODO: ER doesn't go this high?
 	m_ram->set_default_value(0);
-
-	// RAM(config, m_debug_ram);
-	// m_debug_ram->set_default_size("16K");
-	// m_debug_ram->set_default_value(0);
-
-	// RAM(config, m_debug_ram_2);
-	// m_debug_ram_2->set_default_size("16K"); // waaaaaaay too big
-	// m_debug_ram_2->set_default_value(0);
-
-	// RAM(config, m_debug_ram_3);
-	// m_debug_ram_3->set_default_size("16K"); // waaaaaaay too big
-	// m_debug_ram_3->set_default_value(0xff);
 
 	// scsi bus and devices
 	NSCSI_BUS(config, m_scsibus);

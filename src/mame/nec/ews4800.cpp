@@ -302,9 +302,9 @@ void ews4800_state::patch_rom(address_map &map)
 
 	// Bypass part of the CPU logical check - it does some seemingly invalid stuff with the ADDU instruction that fails with the current emulation
 	// Specifically, it tries to run ADDU on improperly sign-extended 32-bit values by manipulating them in 64 bit mode first
-	// map(0x1fc05ee4, 0x1fc05ee7).lr32(NAME([]() { return 0x14430005; })); // bne $v0,$v1,$bfc05efc
-	// map(0x1fc05f04, 0x1fc05f07).lr32(NAME([]() { return 0x14430005; })); // bne $v0,$v1,$bfc05f1c
-    // map(0x1fc05f2c, 0x1fc05f2f).lr32(NAME([]() { return 0x14430006; })); // bne $v0,$v1,$bfc05f48
+	map(0x1fc05ee4, 0x1fc05ee7).lr32(NAME([]() { return 0x14430005; })); // bne $v0,$v1,$bfc05efc
+	map(0x1fc05f04, 0x1fc05f07).lr32(NAME([]() { return 0x14430005; })); // bne $v0,$v1,$bfc05f1c
+    map(0x1fc05f2c, 0x1fc05f2f).lr32(NAME([]() { return 0x14430006; })); // bne $v0,$v1,$bfc05f48
 
 	// Bypass obnoxious primary cache test - the r4000.cpp driver doesn't have a primary cache yet
 	map(0x1fc06940, 0x1fc06943).lr32(NAME([]() { return 0xbf01e27; })); // j $bfc0789c
