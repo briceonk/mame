@@ -2,7 +2,7 @@
 // copyright-holders:Patrick Mackinlay
 
 /*
- * NEC EWS4800 systems.
+ * NEC EWS4800 systems with R3000-family processors
  *
  * Sources:
  *  - http://www.jira-net.or.jp/vm/data/1993090101/1993090101knr/4-1-14.pdf
@@ -103,7 +103,7 @@ private:
 	required_device<screen_device> m_screen;
 	required_device<bt459_device> m_bt459;
 	required_device_array<ram_device, 2> m_vram; // shadow vram for reshaping for RAMDAC on the fly while maintaing CPU access coherency
-	
+
 	required_device<nscsi_bus_device> m_scsibus;
 	required_device<ncr53c90a_device> m_scsi;
 	required_device<am7990_device> m_net;
@@ -134,7 +134,7 @@ private:
 	// uint32_t vmechk = 0x0;
 
 	// PICNIC interrupt controller
-	// The EWS4800/310 appears to use the same interrupt controller as the TR2 board (EWS4800/350)
+	// The EWS4800/210 appears to use the same interrupt controller as the TR2 board (EWS4800/350)
 	// https://github.com/NetBSD/src/blob/trunk/sys/arch/ews4800mips/include/sbd_tr2.h
 	// https://github.com/NetBSD/src/blob/trunk/sys/arch/ews4800mips/ews4800mips/tr2_intr.c
 	void picnic_status_w(offs_t offset, uint8_t data);
@@ -184,7 +184,7 @@ TIMER_CALLBACK_MEMBER(ews4800_r3k_state::dma_check)
 
 uint8_t ews4800_r3k_state::picnic_status_r(offs_t offset)
 {
-	LOGMASKED(LOG_ALL_INTERRUPT, "picnic_status_r: PICNIC INT%d = 0x%x (%s)\n", offset, m_picnic_status[offset], machine().describe_context());
+	// LOGMASKED(LOG_ALL_INTERRUPT, "picnic_status_r: PICNIC INT%d = 0x%x (%s)\n", offset, m_picnic_status[offset], machine().describe_context());
 	return m_picnic_status[offset];
 }
 
@@ -257,7 +257,7 @@ void ews4800_r3k_state::init()
 void ews4800_r3k_state::patch_rom(address_map &map)
 {
 	// patch out small portion of memory test that relies on cache
-	map(0x1fc04704, 0x1fc04707).lr32(NAME([](){ return 0x0; })); 
+	map(0x1fc04704, 0x1fc04707).lr32(NAME([](){ return 0x0; }));
 	map(0x1fc047b0, 0x1fc047b3).lr32(NAME([](){ return 0x0; }));
 
 	// Completely skip cache test, it hangs
@@ -298,7 +298,24 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x1fbe007c, 0x1fbe007f).lr32(NAME([]() { return 0x1800; })); // TODO: mrom only reads one byte?
 
 	// SCSI
-	map(0x1fbe0040, 0x1fbe0057).m(m_scsi, FUNC(ncr53c90a_device::map)).umask16(0xff00);
+	// map(0x1fbe0040, 0x1fbe0057).m(m_scsi, FUNC(ncr53c90a_device::map)).umask16(0xff00);
+	// LSB of the address seems to be ignored here. The EWS firmware normally uses the halfword-aligned byte address (0x0, 0x2, etc.), but for reading the status register
+	// uses 0x9 instead of 0x8. Therefore, this seems to be the way it is mapped. However, it would be good to double-check this assumption on real hardware at some point
+	map(0x1fbe0040, 0x1fbe0057).lrw8(
+		[this](offs_t offset)
+		{
+			uint8_t val = m_scsi->read(offset / 2);
+			LOG("scsi_hack_r[0x%x] -> 0x%x (%s)\n", offset, val, machine().describe_context());
+			return val;
+		},
+		"scsi_hack_r",
+		[this](offs_t offset, uint8_t data)
+		{
+			LOG("scsi_hack_w[0x%x] = 0x%x (%s)\n", offset, data, machine().describe_context());
+			m_scsi->write(offset / 2, data);
+		},
+		"scsi_hack_w"
+	);
 
 	// LANCE
 	map(0x1fbe0000, 0x1fbe0007).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
@@ -306,16 +323,19 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	// Floppy disk controller
 	map(0x1fbe0080, 0x1fbe0087).m(m_fdc, FUNC(upd72065_device::map)).umask32(0xff000000);
 
+	// TODO: probably kbms serial
+	map(0x1b002000, 0x1b002003).noprw();
+
 	// GA (framebuffer)
 	map(0x15f00e00, 0x15f00e03).lr32(NAME([]() { return 0x10;})); // fb present? monitor ROM needs this to use the right GA offsets for the RAMDAC and such
 	map(0x10000000, 0x101fffff).noprw(); // TODO: what is this region? Does it provide some kind of view into VRAM?
 		// .lrw8(NAME([this](offs_t offset){ return m_vram[0]->read(offset); }), NAME([this](offs_t offset, uint8_t data) { m_vram[0]->write(offset, data); }));
 
 	map(0x10400000, 0x105fffff).lrw8(NAME([this](offs_t offset)
-		{ 
+		{
 			return m_vram[0]->read(offset);
-		}), 
-		NAME([this](offs_t offset, uint8_t data) 
+		}),
+		NAME([this](offs_t offset, uint8_t data)
 		{
 			m_vram[0]->write(offset, data);
 
@@ -327,8 +347,8 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 				 m_vram[1]->write(1280 * row + column, data);
 			}
 		}));
-	
-	map(0x10c00000, 0x10c7ffff).noprw(); // TODO: probably GA block write	
+
+	map(0x10c00000, 0x10c7ffff).noprw(); // TODO: probably GA block write
 	map(0x15f00c50, 0x15f00c5f).m(m_bt459, FUNC(bt459_device::map)).umask32(0xff);
 }
 
@@ -416,7 +436,7 @@ void ews4800_r3k_state::ews4800_210(machine_config &config)
 			ncr53c90a_device &adapter = downcast<ncr53c90a_device &>(*device);
 
 			adapter.irq_handler_cb().set(*this, FUNC(ews4800_r3k_state::scsi_irq));
-			adapter.drq_handler_cb().set(*this, FUNC(ews4800_r3k_state::scsi_drq_w)); 
+			adapter.drq_handler_cb().set(*this, FUNC(ews4800_r3k_state::scsi_drq_w));
 			});
 
 	// // ethernet
@@ -474,5 +494,5 @@ ROM_END
 
 } // anonymous namespace
 
-/*   YEAR   NAME         PARENT  COMPAT  MACHINE      INPUT  CLASS          INIT  COMPANY  FULLNAME       FLAGS */
+/*   YEAR   NAME         PARENT  COMPAT  MACHINE      INPUT  CLASS              INIT  COMPANY  FULLNAME       FLAGS */
 COMP(1993,  ews4800_210, 0,      0,      ews4800_210, 0,     ews4800_r3k_state, init, "NEC",   "EWS4800/210", MACHINE_IS_SKELETON)
