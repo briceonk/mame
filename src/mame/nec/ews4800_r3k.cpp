@@ -118,7 +118,7 @@ private:
 	// DMA registers (guess)
 	uint32_t dma_address = 0;
 	uint32_t dma_transfer_count = 0;
-	uint32_t dma_command = 0;
+	uint16_t dma_command = 0x4;
 	emu_timer *m_dma_check;
 	TIMER_CALLBACK_MEMBER(dma_check);
 	bool scsi_drq;
@@ -157,17 +157,19 @@ private:
 TIMER_CALLBACK_MEMBER(ews4800_r3k_state::dma_check)
 {
 	LOG("scsi dma_check cmd = 0x%x drq = 0x%x\n", dma_command, scsi_drq);
-	if (dma_command == 0x4000000 && scsi_drq) // TODO: DMA out?
+	if (dma_command == 0x400 && scsi_drq) // TODO: DMA out?
 	{
 		// get byte from DMA source
 		const uint8_t data = m_scsi->dma_r();
 		LOG("scsi dma r 0x%x = 0x%x tcount 0x%x\n", dma_address, data, dma_transfer_count);
+		//m_ram->write(dma_address, data); // TODO: why does writing to the CPU space die?
 		m_cpu->space(0).write_byte(dma_address, data);
+		machine().debug_break();
 		++dma_address;
 		--dma_transfer_count;
-		if (dma_transfer_count == 0)
+		if (dma_transfer_count < 0)
 		{
-			// TODO: set IRQ
+			dma_transfer_count = 0;
 		}
 		else
 		{
@@ -286,35 +288,32 @@ void ews4800_r3k_state::cpu_map(address_map &map)
 	map(0x1b011000, 0x1b01100f).rw(m_scc[1], FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)).umask32(0xff000000);
 
 	// DMAC
-	map(0x1fbe0060, 0x1fbe0063).lrw32([this]() { return dma_address; }, "dma_address_r", [this](offs_t offset, uint32_t data) { LOG("Set DMA address to 0x%x (%s)\n", data, machine().describe_context()); dma_address = data; }, "dma_address_w");
-	map(0x1fbe0064, 0x1fbe0067).lrw32([this]() { return dma_transfer_count; }, "dma_transfer_count_r", [this](offs_t offset, uint32_t data) { LOG("Set DMA transfer count to 0x%x (%s)\n", data, machine().describe_context()); dma_transfer_count = data; }, "dma_transfer_count_w");
-	map(0x1fbe0068, 0x1fbe006b).lrw32([this]() { return dma_command; }, "dma_command_r", [this](offs_t offset, uint32_t data) { LOG("Set DMA command to 0x%x (%s)\n", data, machine().describe_context()); dma_command = data; }, "dma_command_w");
+	map(0x1fbe0060, 0x1fbe0063).lrw32([this]() { LOG("READ dma_address\n"); return dma_address; }, "dma_address_r", [this](offs_t offset, uint32_t data) { LOG("Set DMA address to 0x%x (%s)\n", data, machine().describe_context()); dma_address = data; }, "dma_address_w");
+	map(0x1fbe0064, 0x1fbe0067).lrw32([this]() { LOG("READ dma_transfer_count\n"); return dma_transfer_count; }, "dma_transfer_count_r", [this](offs_t offset, uint32_t data) { LOG("Set DMA transfer count to 0x%x (%s)\n", data, machine().describe_context()); dma_transfer_count = data; }, "dma_transfer_count_w");
+	map(0x1fbe0068, 0x1fbe0069).lrw16([this]() { LOG("READ dma_command 0x%x (%s)\n", dma_command, machine().describe_context()); return dma_command; }, "dma_command_r", [this](offs_t offset, uint16_t data) { LOG("Set DMA command to 0x%x (%s)\n", data, machine().describe_context()); dma_command = data & ~0x300; }, "dma_command_w");
 	map(0x1fbe00a0, 0x1fbe00a7).ram();
 	map(0x1fbe00e0, 0x1fbe00e7).ram();
-	map(0x1fbe0028, 0x1fbe0029).lr16(NAME([]() { return 0x4; }));
-	map(0x1fbe0068, 0x1fbe0069).lr16(NAME([]() { return 0x4; }));
-	map(0x1fbe00a8, 0x1fbe00a9).lr16(NAME([]() { return 0x4; }));
-	map(0x1fbe00e8, 0x1fbe00e9).lr16(NAME([]() { return 0x404; }));
-	map(0x1fbe007c, 0x1fbe007f).lr32(NAME([]() { return 0x1800; })); // TODO: mrom only reads one byte?
+	map(0x1fbe0028, 0x1fbe0029).lr16(NAME([this]() { LOG("READ whatever 28-29 is (%s)\n"); return 0x4; }));
+	//map(0x1fbe0068, 0x1fbe0069).lr16(NAME([this]() { LOG("READ DMA command 0x%x but actually returning 0x4 (%s)\n", dma_command, machine().describe_context()); return 0x4; }));
+	map(0x1fbe00a8, 0x1fbe00a9).lr16(NAME([this]() { LOG("READ whatever a8-a9 is (%s)\n"); return 0x4; }));
+	map(0x1fbe00e8, 0x1fbe00e9).lr16(NAME([this]() { LOG("READ whatever e8-e9 is (%s)\n"); return 0x404; }));
+	map(0x1fbe007c, 0x1fbe007f).lr32(NAME([this]() { LOG("READ whatever 7c-7f is (%s)\n"); return 0x1800; })); // TODO: mrom only reads one byte?
 
 	// SCSI
-	// map(0x1fbe0040, 0x1fbe0057).m(m_scsi, FUNC(ncr53c90a_device::map)).umask16(0xff00);
 	// LSB of the address seems to be ignored here. The EWS firmware normally uses the halfword-aligned byte address (0x0, 0x2, etc.), but for reading the status register
 	// uses 0x9 instead of 0x8. Therefore, this seems to be the way it is mapped. However, it would be good to double-check this assumption on real hardware at some point
-	map(0x1fbe0040, 0x1fbe0057).lrw8(
+	map(0x1fbe0040, 0x1fbe0057).mask(0x1e).lrw8(
 		[this](offs_t offset)
 		{
-			uint8_t val = m_scsi->read(offset / 2);
-			LOG("scsi_hack_r[0x%x] -> 0x%x (%s)\n", offset, val, machine().describe_context());
+			uint8_t val = m_scsi->read(offset >> 1);
 			return val;
 		},
-		"scsi_hack_r",
+		"scsi_ctlr_r",
 		[this](offs_t offset, uint8_t data)
 		{
-			LOG("scsi_hack_w[0x%x] = 0x%x (%s)\n", offset, data, machine().describe_context());
-			m_scsi->write(offset / 2, data);
+			m_scsi->write(offset >> 1, data);
 		},
-		"scsi_hack_w"
+		"scsi_ctlr_w"
 	);
 
 	// LANCE

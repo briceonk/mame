@@ -9,7 +9,7 @@
 #define LOG_DATA    (1U << 2)
 #define LOG_UNSUPPORTED (1U << 3)
 
-#define VERBOSE 0
+#define VERBOSE (LOG_GENERAL|LOG_COMMAND|LOG_DATA|LOG_UNSUPPORTED)
 
 #include "logmacro.h"
 
