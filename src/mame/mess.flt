@@ -283,6 +283,7 @@ force/fccpu30.cpp
 force/force68k.cpp
 force/miniforce.cpp
 fujitsu/fm7.cpp
+fujitsu/fmg.cpp
 fujitsu/fmtowns.cpp
 funtech/supracan.cpp
 gamepark/gp2x.cpp

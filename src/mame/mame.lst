@@ -14278,6 +14278,9 @@ fm77av                          //
 fm8                             // 1981
 fmnew7                          //
 
+@source:fujitsu/fmg.cpp
+fmg150                          // Fujitsu FACOM G-150
+
 @source:fujitsu/fmtowns.cpp
 carmarty                        // Fujitsu FM-Towns Car Marty
 fmtmarty                        // 1993 Fujitsu FM-Towns Marty
