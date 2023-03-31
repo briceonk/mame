@@ -32763,6 +32763,9 @@ apc                             //
 @source:nec/bungo.cpp
 mini5sx                         // 1991
 
+@source:nec/ews4800_68k.cpp
+ews4800_35                      // NEC EWS4800/35
+
 @source:nec/ews4800_r3k.cpp
 ews4800_210                     // NEC EWS4800/210
 
