@@ -106,12 +106,12 @@ namespace
 {
 	using namespace std::literals::string_view_literals;
 
-	class news_iop_state : public driver_device
+	class news_iop_base_state : public driver_device
 	{
 	public:
 		static constexpr feature_type unemulated_features() { return feature::GRAPHICS; }
 
-		news_iop_state(machine_config const &mconfig, device_type type, char const *tag) :
+		news_iop_base_state(machine_config const &mconfig, device_type type, char const *tag) :
 			driver_device(mconfig, type, tag),
 			m_iop(*this, "iop"),
 			m_cpu(*this, "cpu"),
@@ -148,7 +148,6 @@ namespace
 		{
 		}
 
-		void nws831(machine_config &config) ATTR_COLD;
 		void init_common() ATTR_COLD;
 
 	protected:
@@ -248,7 +247,6 @@ namespace
 		void interval_timer_tick(uint8_t data);
 		TIMER_CALLBACK_MEMBER(bus_error_off_cpu);
 
-	private:
 		// CPUs (2x 68020, but only the main processor has an FPU)
 		required_device<m68020_device> m_iop;    // I/O Processor (BSP, brings up system)
 		required_device<m68020fpu_device> m_cpu; // Main Processor
@@ -299,9 +297,27 @@ namespace
 		static constexpr int NET_RAM_SIZE = 8192; // 16K RAM, in 16-bit words
 	};
 
-	void news_iop_state::machine_start()
+    class news_iop_020_state : public news_iop_base_state
+    {
+    public:
+        news_iop_020_state(machine_config const &mconfig, device_type type, char const *tag) : news_iop_base_state(mconfig, type, tag)
+        {}
+
+        void nws831(machine_config &config) ATTR_COLD;
+    };
+
+    class news_iop_030_state : public news_iop_base_state
+    {
+    public:
+        news_iop_030_state(machine_config const &mconfig, device_type type, char const *tag) : news_iop_base_state(mconfig, type, tag)
+        {}
+
+        void nws1850(machine_config &config) ATTR_COLD;
+    };
+
+	void news_iop_base_state::machine_start()
 	{
-		m_cpu_bus_error_timer = timer_alloc(FUNC(news_iop_state::bus_error_off_cpu), this);
+		m_cpu_bus_error_timer = timer_alloc(FUNC(news_iop_base_state::bus_error_off_cpu), this);
 
 		m_net_ram = std::make_unique<u16[]>(NET_RAM_SIZE);
 		save_pointer(NAME(m_net_ram), NET_RAM_SIZE);
@@ -323,7 +339,7 @@ namespace
 		save_item(NAME(m_rtc_data));
 	}
 
-	void news_iop_state::interval_timer_tick(uint8_t data)
+	void news_iop_base_state::interval_timer_tick(uint8_t data)
 	{
 		// TODO: Confirm that channel 0 drives both CPU and IOP
 		// On the NWS-1960, the 8253 uses channel 0 for the 100Hz CPU timer, channel 1 for main memory refresh, and channel 2 for the IOP timeout
@@ -337,12 +353,12 @@ namespace
 		cpu_irq_w<TIMER>(data > 0);
 	}
 
-	TIMER_CALLBACK_MEMBER(news_iop_state::bus_error_off_cpu)
+	TIMER_CALLBACK_MEMBER(news_iop_base_state::bus_error_off_cpu)
 	{
 		m_cpu_bus_error = false;
 	}
 
-	uint8_t news_iop_state::iop_status_r()
+	uint8_t news_iop_base_state::iop_status_r()
 	{
 		// IOP status bits defined as below for the NWS-18xx/19xx series
 		// 7: FDC IRQ
@@ -359,7 +375,7 @@ namespace
 		return status;
 	}
 
-	void news_iop_state::iop_romdis_w(uint8_t data)
+	void news_iop_base_state::iop_romdis_w(uint8_t data)
 	{
 		LOG("IOP ROMDIS 0x%x\n", data);
 		if (data > 0)
@@ -373,7 +389,7 @@ namespace
 		m_panel_shift_count = 0; // hack, clear state from init
 	}
 
-	void news_iop_state::min_w(uint8_t data)
+	void news_iop_base_state::min_w(uint8_t data)
 	{
 		constexpr int HD_RATE = 500000;
 		constexpr int DD_RATE = 250000; // TODO: Test DD rate when image is available
@@ -383,13 +399,13 @@ namespace
 		m_fdc->set_rate(rate);
 	}
 
-	void news_iop_state::motoron_w(uint8_t data)
+	void news_iop_base_state::motoron_w(uint8_t data)
 	{
 		LOG("Write MOTORON = 0x%x (%s)\n", data, machine().describe_context());
 		m_fdc->subdevice<floppy_connector>("0")->get_device()->mon_w(data & 8 ? 1 : 0);
 	}
 
-	void news_iop_state::powoff_w(uint8_t data)
+	void news_iop_base_state::powoff_w(uint8_t data)
 	{
 		LOG("Write POWOFF = 0x%x (%s)\n", data, machine().describe_context());
 
@@ -399,13 +415,13 @@ namespace
 		}
 	}
 
-	void news_iop_state::cpureset_w(uint8_t data)
+	void news_iop_base_state::cpureset_w(uint8_t data)
 	{
 		LOG("Write CPURESET = 0x%x\n", data);
 		m_cpu->set_input_line(INPUT_LINE_HALT, data ? 0 : 1);
 	}
 
-	uint8_t news_iop_state::rtcreg_r()
+	uint8_t news_iop_base_state::rtcreg_r()
 	{
 		m_rtc->cs1_w(1);
 		m_rtc->cs2_w(1);
@@ -419,7 +435,7 @@ namespace
 		return result;
 	}
 
-	void news_iop_state::rtcreg_w(uint8_t data)
+	void news_iop_base_state::rtcreg_w(uint8_t data)
 	{
 		LOGMASKED(LOG_RTC, "rtc w 0x%x\n", data);
 		m_rtc->cs1_w(1);
@@ -435,7 +451,7 @@ namespace
 		m_rtc->cs2_w(0);
 	}
 
-	void news_iop_state::rtcsel_w(uint8_t data)
+	void news_iop_base_state::rtcsel_w(uint8_t data)
 	{
 		LOGMASKED(LOG_RTC, "rtc sel w 0x%x\n", data);
 		m_rtc->cs1_w(1);
@@ -451,13 +467,13 @@ namespace
 		m_rtc->cs2_w(0);
 	}
 
-	void news_iop_state::set_rtc_data_bit(uint8_t bit_number, int data)
+	void news_iop_base_state::set_rtc_data_bit(uint8_t bit_number, int data)
 	{
 		const uint8_t bit = 1 << bit_number;
 		m_rtc_data = (m_rtc_data & ~bit) | (data ? bit : 0x0);
 	}
 
-	uint32_t news_iop_state::scsi_dma_r(offs_t offset, uint32_t mem_mask)
+	uint32_t news_iop_base_state::scsi_dma_r(offs_t offset, uint32_t mem_mask)
 	{
 		uint32_t result = 0;
 		switch (mem_mask)
@@ -484,7 +500,7 @@ namespace
 		return result;
 	}
 
-	void news_iop_state::scsi_dma_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+	void news_iop_base_state::scsi_dma_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	{
 	   switch (mem_mask)
 		{
@@ -510,14 +526,14 @@ namespace
 		}
 	}
 
-	void news_iop_state::scsi_drq_handler(int status)
+	void news_iop_base_state::scsi_drq_handler(int status)
 	{
 		LOGMASKED(LOG_SCSI, "SCSI DRQ changed to 0x%x\n", status);
 		m_scsi_dma->drq_w(status);
 		iop_irq_w<SCSI_DRQ>(status);
 	}
 
-	void news_iop_state::machine_reset()
+	void news_iop_base_state::machine_reset()
 	{
 		// Reset memory configuration
 		m_iop->space(0).install_rom(0x00000000, 0x0000ffff, m_eprom);
@@ -526,11 +542,11 @@ namespace
 		m_cpu->set_input_line(INPUT_LINE_HALT, 1);
 	}
 
-	void news_iop_state::init_common()
+	void news_iop_base_state::init_common()
 	{
 	}
 
-	void news_iop_state::iop_map(address_map &map)
+	void news_iop_base_state::iop_map(address_map &map)
 	{
 		map.unmap_value_low();
 		// Silence unmapped read/write warnings during memory probe - whatever RAM is present will be installed over top of this region
@@ -539,29 +555,29 @@ namespace
 		map(0x03000000, 0x0300ffff).rom().region("eprom", 0).mirror(0x007f0000);
 
 		// IOP bus expansion I/O
-		map(0x20000000, 0x20ffffff).rw(FUNC(news_iop_state::extio_bus_error_r),FUNC(news_iop_state::extio_bus_error_w)).mirror(0x1f000000);
+		map(0x20000000, 0x20ffffff).rw(FUNC(news_iop_base_state::extio_bus_error_r),FUNC(news_iop_base_state::extio_bus_error_w)).mirror(0x1f000000);
 
 		// Expansion slot SCC (bus errors here kill iopboot, so the probe process may not use bus errors, at least not with the same setup as extio)
 		// TODO: Does the fact that NEWS-OS 4 poke at these addresses mean that something is not configured properly elsewhere?
 		map(0x4c000100, 0x4c0001ff).noprw();
 
-		map(0x60000000, 0x60000000).r(FUNC(news_iop_state::iop_status_r));
-		map(0x40000000, 0x40000000).w(FUNC(news_iop_state::iop_inten_w<TIMEOUT>));
-		map(0x40000001, 0x40000001).w(FUNC(news_iop_state::min_w));
-		map(0x40000002, 0x40000002).w(FUNC(news_iop_state::motoron_w));
-		map(0x40000003, 0x40000003).w(FUNC(news_iop_state::iop_inten_w<SCSI_DRQ>));
-		map(0x40000004, 0x40000004).w(FUNC(news_iop_state::iop_romdis_w));
-		map(0x40000005, 0x40000005).w(FUNC(news_iop_state::powoff_w));
-		map(0x40000006, 0x40000006).w(FUNC(news_iop_state::iop_inten_w<CPU>));
-		map(0x40000007, 0x40000007).w(FUNC(news_iop_state::cpureset_w));
+		map(0x60000000, 0x60000000).r(FUNC(news_iop_base_state::iop_status_r));
+		map(0x40000000, 0x40000000).w(FUNC(news_iop_base_state::iop_inten_w<TIMEOUT>));
+		map(0x40000001, 0x40000001).w(FUNC(news_iop_base_state::min_w));
+		map(0x40000002, 0x40000002).w(FUNC(news_iop_base_state::motoron_w));
+		map(0x40000003, 0x40000003).w(FUNC(news_iop_base_state::iop_inten_w<SCSI_DRQ>));
+		map(0x40000004, 0x40000004).w(FUNC(news_iop_base_state::iop_romdis_w));
+		map(0x40000005, 0x40000005).w(FUNC(news_iop_base_state::powoff_w));
+		map(0x40000006, 0x40000006).w(FUNC(news_iop_base_state::iop_inten_w<CPU>));
+		map(0x40000007, 0x40000007).w(FUNC(news_iop_base_state::cpureset_w));
 
 		map(0x42000000, 0x42000003).rw(m_interval_timer, FUNC(pit8253_device::read), FUNC(pit8253_device::write));
 
 		map(0x44000000, 0x44000003).m(m_fdc, FUNC(upd765a_device::map));
 		map(0x44000007, 0x44000007).rw(m_fdc, FUNC(upd765a_device::dma_r), FUNC(upd765a_device::dma_w));
 
-		map(0x46000001, 0x46000001).rw(FUNC(news_iop_state::rtcreg_r), FUNC(news_iop_state::rtcreg_w));
-		map(0x46000002, 0x46000002).w(FUNC(news_iop_state::rtcsel_w));
+		map(0x46000001, 0x46000001).rw(FUNC(news_iop_base_state::rtcreg_r), FUNC(news_iop_base_state::rtcreg_w));
+		map(0x46000002, 0x46000002).w(FUNC(news_iop_base_state::rtcsel_w));
 
 		map(0x4a000000, 0x4a000003).rw(m_scc_peripheral, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)); // kbms
 		map(0x4c000000, 0x4c000003).rw(m_scc_external, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));   // rs232
@@ -576,7 +592,7 @@ namespace
 		map(0x6a000001, 0x6a000001).lw8(NAME([this] (uint8_t data) { cpu_irq_w<IOPIRQ5>(data > 0); }));
 		map(0x6a000002, 0x6a000002).lw8(NAME([this] (uint8_t data) { cpu_irq_w<IOPIRQ3>(data > 0); }));
 
-		map(0x64000000, 0x64000003).rw(FUNC(news_iop_state::scsi_dma_r), FUNC(news_iop_state::scsi_dma_w));
+		map(0x64000000, 0x64000003).rw(FUNC(news_iop_base_state::scsi_dma_r), FUNC(news_iop_base_state::scsi_dma_w));
 
 		map(0x66000000, 0x66003fff).lrw16([this] (offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
 										  [this] (offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
@@ -586,13 +602,13 @@ namespace
 		map(0x80000000, 0x8001ffff).ram(); // IOP work RAM
 	}
 
-	void news_iop_state::cpu_romdis_w(uint8_t data)
+	void news_iop_base_state::cpu_romdis_w(uint8_t data)
 	{
 		LOG("(%s) CPU ROMDIS 0x%x\n", machine().describe_context(), data);
 		m_mmu->set_rom_enable(data == 0);
 	}
 
-	void news_iop_state::mmuen_w(uint8_t data)
+	void news_iop_base_state::mmuen_w(uint8_t data)
 	{
 		LOGMASKED(LOG_MEMORY, "(%s) CPU MMUEN 0x%x\n", machine().describe_context(), data);
 		const bool mmu_enable = data > 0;
@@ -600,7 +616,7 @@ namespace
 		m_mmu->set_mmu_enable(mmu_enable);
 	}
 
-	uint8_t news_iop_state::berr_status_r()
+	uint8_t news_iop_base_state::berr_status_r()
 	{
 		LOGMASKED(LOG_MEMORY, "(%s) BERR_STATUS read = 0x%x\n", machine().describe_context(), m_cpu_bus_error_status);
 		uint8_t status = m_cpu_bus_error_status;
@@ -610,34 +626,34 @@ namespace
 	}
 
 	// TODO: implement AST (Asynchronous System Trap)
-	void news_iop_state::astreset_w(uint8_t data)
+	void news_iop_base_state::astreset_w(uint8_t data)
 	{
 		LOGMASKED(LOG_AST, "(%s) AST_RESET 0x%x\n", machine().describe_context(), data);
 	}
 
-	void news_iop_state::astset_w(uint8_t data)
+	void news_iop_base_state::astset_w(uint8_t data)
 	{
 		LOGMASKED(LOG_AST, "(%s) AST_SET 0x%x\n", machine().describe_context(), data);
 	}
 
-	void news_iop_state::mmu_map(address_map &map)
+	void news_iop_base_state::mmu_map(address_map &map)
 	{
 		map(0x03000000, 0x0300ffff).rom().region("eprom", 0).mirror(0x007f0000);
 
 		// VME bus
-		map(0x03900000, 0x039fffff).rw(FUNC(news_iop_state::vme_bus_error_r), FUNC(news_iop_state::vme_bus_error_w)); // TODO: full region start/end
+		map(0x03900000, 0x039fffff).rw(FUNC(news_iop_base_state::vme_bus_error_r), FUNC(news_iop_base_state::vme_bus_error_w)); // TODO: full region start/end
 
 		// Various platform control registers (MMU and otherwise)
-		map(0x04400000, 0x04400000).w(FUNC(news_iop_state::cpu_romdis_w));
-		map(0x04400001, 0x04400001).w(FUNC(news_iop_state::mmuen_w));
-		map(0x04400002, 0x04400002).w(FUNC(news_iop_state::cpu_inten_w<IOPIRQ3>));
-		map(0x04400003, 0x04400003).w(FUNC(news_iop_state::cpu_inten_w<IOPIRQ5>));
-		map(0x04400004, 0x04400004).w(FUNC(news_iop_state::cpu_inten_w<TIMER>));
+		map(0x04400000, 0x04400000).w(FUNC(news_iop_base_state::cpu_romdis_w));
+		map(0x04400001, 0x04400001).w(FUNC(news_iop_base_state::mmuen_w));
+		map(0x04400002, 0x04400002).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ3>));
+		map(0x04400003, 0x04400003).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ5>));
+		map(0x04400004, 0x04400004).w(FUNC(news_iop_base_state::cpu_inten_w<TIMER>));
 		map(0x04400005, 0x04400005).lw8([this] (uint8_t data)
 										{
 											LOGMASKED(LOG_MEMORY, "(%s) Write CACHEEN = 0x%x\n", machine().describe_context(), data);
 										}, "CACHEEN");
-		map(0x04400006, 0x04400006).w(FUNC(news_iop_state::cpu_inten_w<PERR>));
+		map(0x04400006, 0x04400006).w(FUNC(news_iop_base_state::cpu_inten_w<PERR>));
 		map(0x04800000, 0x04800000).lw8([this] (uint8_t data) { iop_irq_w<CPU>(1); }, "INT_IOP");
 		map(0x04c00000, 0x04c00000).select(0x10000000).w(m_mmu, FUNC(news_020_mmu_device::clear_entries));
 
@@ -645,13 +661,13 @@ namespace
 														 {
 															 LOGMASKED(LOG_MEMORY, "%s cache clear = 0x%x (%s)\n", (offset & 0x400000) ? "system" : "user", data, machine().describe_context());
 														 }, "CACHE_CLR");
-		map(0x05800000, 0x05800000).w(FUNC(news_iop_state::astreset_w));
-		map(0x05800001, 0x05800001).w(FUNC(news_iop_state::astset_w));
-		map(0x05c00000, 0x05c00000).r(FUNC(news_iop_state::berr_status_r));
+		map(0x05800000, 0x05800000).w(FUNC(news_iop_base_state::astreset_w));
+		map(0x05800001, 0x05800001).w(FUNC(news_iop_base_state::astset_w));
+		map(0x05c00000, 0x05c00000).r(FUNC(news_iop_base_state::berr_status_r));
 		map(0x06000000, 0x061fffff).rw(m_mmu, FUNC(news_020_mmu_device::mmu_entry_r), FUNC(news_020_mmu_device::mmu_entry_w)).select(0x10000000);
 	}
 
-	void news_iop_state::cpu_map(address_map &map)
+	void news_iop_base_state::cpu_map(address_map &map)
 	{
 		map(0x0, 0xffffffff).lrw32(
 				[this] (offs_t offset, uint32_t mem_mask) {
@@ -662,14 +678,14 @@ namespace
 				}, "hyperbus_w");
 	}
 
-	template <news_iop_state::iop_irq_number Number>
-	bool news_iop_state::is_iop_irq_set()
+	template <news_iop_base_state::iop_irq_number Number>
+	bool news_iop_base_state::is_iop_irq_set()
 	{
 		return BIT(m_iop_intst, Number);
 	}
 
-	template <news_iop_state::iop_irq_number Number>
-	void news_iop_state::iop_irq_w(int state)
+	template <news_iop_base_state::iop_irq_number Number>
+	void news_iop_base_state::iop_irq_w(int state)
 	{
 		if (Number != TIMEOUT)
 		{
@@ -688,8 +704,8 @@ namespace
 		int_check_iop();
 	}
 
-	template <news_iop_state::iop_irq_number Number>
-	void news_iop_state::iop_inten_w(uint8_t state)
+	template <news_iop_base_state::iop_irq_number Number>
+	void news_iop_base_state::iop_inten_w(uint8_t state)
 	{
 		if (Number != TIMEOUT)
 		{
@@ -709,7 +725,7 @@ namespace
 		int_check_iop();
 	}
 
-	void news_iop_state::int_check_iop()
+	void news_iop_base_state::int_check_iop()
 	{
 	   const int active_irq = m_iop_intst & (m_iop_inten | iop_nmi_mask);
 	   for (auto irq : iop_irq_line_map)
@@ -733,8 +749,8 @@ namespace
 	   }
 	}
 
-	template <news_iop_state::cpu_irq_number Number>
-	void news_iop_state::cpu_irq_w(int state)
+	template <news_iop_base_state::cpu_irq_number Number>
+	void news_iop_base_state::cpu_irq_w(int state)
 	{
 		if (Number != TIMER)
 		{
@@ -753,8 +769,8 @@ namespace
 		int_check_cpu();
 	}
 
-	template <news_iop_state::cpu_irq_number Number>
-	void news_iop_state::cpu_inten_w(uint8_t state)
+	template <news_iop_base_state::cpu_irq_number Number>
+	void news_iop_base_state::cpu_inten_w(uint8_t state)
 	{
 		if (Number != TIMER)
 		{
@@ -774,7 +790,7 @@ namespace
 		int_check_cpu();
 	}
 
-	void news_iop_state::int_check_cpu()
+	void news_iop_base_state::int_check_cpu()
 	{
 		const int active_irq = m_cpu_intst & m_cpu_inten;
 		for (auto irq : cpu_irq_line_map)
@@ -800,7 +816,7 @@ namespace
 		device.option_add("tape", NSCSI_TAPE);
 	}
 
-	void news_iop_state::handle_rts(int data)
+	void news_iop_base_state::handle_rts(int data)
 	{
 		if (m_panel_shift != !data)
 		{
@@ -816,7 +832,7 @@ namespace
 		update_dcd();
 	}
 
-	void news_iop_state::handle_dtr(int data)
+	void news_iop_base_state::handle_dtr(int data)
 	{
 		if (m_panel_clear != data)
 		{
@@ -831,7 +847,7 @@ namespace
 		update_dcd();
 	}
 
-	void news_iop_state::update_dcd()
+	void news_iop_base_state::update_dcd()
 	{
 		// the shift pin and the counter drive a multiplexer (the shift pin also drives the counter)
 		uint8_t multiplexer_value = (m_panel_shift_count & 0x3) << 1;
@@ -871,7 +887,7 @@ namespace
 		m_scc_peripheral->dcdb_w(dcd_state);
 	}
 
-	void news_iop_state::cpu_bus_error(offs_t offset, uint32_t mem_mask, bool write, uint8_t status)
+	void news_iop_base_state::cpu_bus_error(offs_t offset, uint32_t mem_mask, bool write, uint8_t status)
 	{
 		if (machine().side_effects_disabled() || (m_cpu_bus_error && m_cpu->pc() == m_last_berr_pc_cpu))
 		{
@@ -888,7 +904,7 @@ namespace
 		m_cpu_bus_error_timer->adjust(m_cpu->cycles_to_attotime(16)); // TODO: 16 is what hcpu30 uses for a similar implementation - is that OK for NEWS?
 	}
 
-	void news_iop_state::scsi_bus_error(uint8_t data)
+	void news_iop_base_state::scsi_bus_error(uint8_t data)
 	{
 		if (!machine().side_effects_disabled())
 		{
@@ -897,7 +913,7 @@ namespace
 		}
 	}
 
-	uint32_t news_iop_state::extio_bus_error_r(offs_t offset, uint32_t mem_mask)
+	uint32_t news_iop_base_state::extio_bus_error_r(offs_t offset, uint32_t mem_mask)
 	{
 		if (!machine().side_effects_disabled())
 		{
@@ -908,7 +924,7 @@ namespace
 		return 0xff;
 	}
 
-	void news_iop_state::extio_bus_error_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+	void news_iop_base_state::extio_bus_error_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	{
 		if (!machine().side_effects_disabled())
 		{
@@ -918,7 +934,7 @@ namespace
 		}
 	}
 
-	uint32_t news_iop_state::vme_bus_error_r(offs_t offset, uint32_t mem_mask)
+	uint32_t news_iop_base_state::vme_bus_error_r(offs_t offset, uint32_t mem_mask)
 	{
 		if (!machine().side_effects_disabled())
 		{
@@ -930,7 +946,7 @@ namespace
 		return 0xff;
 	}
 
-	void news_iop_state::vme_bus_error_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+	void news_iop_base_state::vme_bus_error_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 	{
 		if (!machine().side_effects_disabled())
 		{
@@ -940,18 +956,18 @@ namespace
 		}
 	}
 
-	void news_iop_state::common(machine_config &config)
+	void news_iop_base_state::common(machine_config &config)
 	{
 		M68020(config, m_iop, 16.67_MHz_XTAL); // TODO: this might come from a 33.3333MHz crystal divided by two
-		m_iop->set_addrmap(AS_PROGRAM, &news_iop_state::iop_map);
-		m_iop->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_iop_state::iop_autovector_map);
+		m_iop->set_addrmap(AS_PROGRAM, &news_iop_base_state::iop_map);
+		m_iop->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_iop_base_state::iop_autovector_map);
 
 		M68020FPU(config, m_cpu, 16.67_MHz_XTAL);
-		m_cpu->set_addrmap(AS_PROGRAM, &news_iop_state::cpu_map);
+		m_cpu->set_addrmap(AS_PROGRAM, &news_iop_base_state::cpu_map);
 
 		NEWS_020_MMU(config, m_mmu, 0);
-		m_mmu->set_addrmap(AS_PROGRAM, &news_iop_state::mmu_map);
-		m_mmu->set_bus_error_callback(FUNC(news_iop_state::cpu_bus_error));
+		m_mmu->set_addrmap(AS_PROGRAM, &news_iop_base_state::mmu_map);
+		m_mmu->set_bus_error_callback(FUNC(news_iop_base_state::cpu_bus_error));
 
 		RAM(config, m_ram);
 		m_ram->set_default_size("8M");
@@ -964,17 +980,17 @@ namespace
 		m_interval_timer->set_clk<0>(PIT_INPUT_FREQUENCY);
 		m_interval_timer->set_clk<1>(PIT_INPUT_FREQUENCY);
 		m_interval_timer->set_clk<2>(PIT_INPUT_FREQUENCY);
-		m_interval_timer->out_handler<0>().set(FUNC(news_iop_state::interval_timer_tick));
+		m_interval_timer->out_handler<0>().set(FUNC(news_iop_base_state::interval_timer_tick));
 
 		// 2x Sharp LH8530A Z8530A-SCC
 		SCC8530(config, m_scc_external, (16_MHz_XTAL / 4));
 		SCC8530(config, m_scc_peripheral, (16_MHz_XTAL / 4));
-		m_scc_external->out_int_callback().set(FUNC(news_iop_state::iop_irq_w<SCC>));
-		m_scc_peripheral->out_int_callback().set(FUNC(news_iop_state::iop_irq_w<SCC_PERIPHERAL>));
+		m_scc_external->out_int_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCC>));
+		m_scc_peripheral->out_int_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCC_PERIPHERAL>));
 
 		// The monitor ROM repurposes the status pins as a serial interface to read the front panel switches and IDROM data
-		m_scc_peripheral->out_dtrb_callback().set(FUNC(news_iop_state::handle_dtr));
-		m_scc_peripheral->out_rtsb_callback().set(FUNC(news_iop_state::handle_rts));
+		m_scc_peripheral->out_dtrb_callback().set(FUNC(news_iop_base_state::handle_dtr));
+		m_scc_peripheral->out_rtsb_callback().set(FUNC(news_iop_base_state::handle_rts));
 
 		// scc channel A
 		RS232_PORT(config, m_serial[0], default_rs232_devices, "terminal");
@@ -994,7 +1010,7 @@ namespace
 
 		// LANCE ethernet controller
 		AM7990(config, m_net, 20_MHz_XTAL);
-		m_net->intr_out().set(FUNC(news_iop_state::iop_irq_w<LANCE>)).invert();
+		m_net->intr_out().set(FUNC(news_iop_base_state::iop_irq_w<LANCE>)).invert();
 		m_net->dma_in().set([this] (offs_t offset)
 							{ return m_net_ram[(offset >> 1) & 0x1fff]; });
 		m_net->dma_out().set([this] (offs_t offset, u16 data, u16 mem_mask)
@@ -1002,8 +1018,8 @@ namespace
 
 		// uPD7265 FDC (Compatible with 765A except it should use Sony/ECMA format by default?)
 		UPD765A(config, m_fdc, 4'000'000); // TODO: confirm clock rate
-		m_fdc->intrq_wr_callback().set(FUNC(news_iop_state::iop_irq_w<FDCIRQ>));
-		m_fdc->drq_wr_callback().set(FUNC(news_iop_state::iop_irq_w<FDCDRQ>));
+		m_fdc->intrq_wr_callback().set(FUNC(news_iop_base_state::iop_irq_w<FDCIRQ>));
+		m_fdc->drq_wr_callback().set(FUNC(news_iop_base_state::iop_irq_w<FDCDRQ>));
 		FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
 
 		// SCSI bus and devices
@@ -1033,7 +1049,7 @@ namespace
 		{
 			ncr5380_device &adapter = downcast<ncr5380_device &>(*device);
 			adapter.irq_handler().set([this] (int state){ m_scsi_dma->irq_w(state); });
-			adapter.drq_handler().set(*this, FUNC(news_iop_state::scsi_drq_handler));
+			adapter.drq_handler().set(*this, FUNC(news_iop_base_state::scsi_drq_handler));
 		});
 
 		// Virtual device for handling SCSI DMA
@@ -1044,8 +1060,8 @@ namespace
 		m_scsi_dma->scsi_dma_read_callback().set(m_scsi, FUNC(ncr53c80_device::dma_r));
 		m_scsi_dma->scsi_dma_write_callback().set(m_scsi, FUNC(ncr53c80_device::dma_w));
 		m_scsi_dma->iop_halt_callback().set_inputline(m_iop, INPUT_LINE_HALT);
-		m_scsi_dma->bus_error_callback().set(FUNC(news_iop_state::scsi_bus_error));
-		m_scsi_dma->irq_out_callback().set(FUNC(news_iop_state::iop_irq_w<SCSI_IRQ>));
+		m_scsi_dma->bus_error_callback().set(FUNC(news_iop_base_state::scsi_bus_error));
+		m_scsi_dma->irq_out_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCSI_IRQ>));
 
 		// Epson RTC-58321B
 		MSM58321(config, m_rtc, 32.768_kHz_XTAL);
@@ -1055,7 +1071,7 @@ namespace
 		m_rtc->d3_handler().set([this] (int data) { set_rtc_data_bit(3, data); });
 	}
 
-	void news_iop_state::iop_autovector_map(address_map &map)
+	void news_iop_base_state::iop_autovector_map(address_map &map)
 	{
 		map(0xfffffff3, 0xfffffff3).lr8(NAME([] ()
 											 { return m68000_base_device::autovector(1); }));
@@ -1085,10 +1101,15 @@ namespace
 											 { return m68000_base_device::autovector(7); }));
 	}
 
-	void news_iop_state::nws831(machine_config &config)
+	void news_iop_020_state::nws831(machine_config &config)
 	{
 		common(config);
 	}
+
+    void news_iop_030_state::nws1850(machine_config &config)
+    {
+        common(config);
+    }
 
 	static INPUT_PORTS_START(nws8xx)
 		PORT_START("FRONT_PANEL")
@@ -1128,8 +1149,16 @@ namespace
 		ROM_LOAD("nws831-idrom.bin", 0x0, 0x100, CRC(167de13d) SHA1(3e46392671324e92f1e34ddd8ac3c6d94144b3d2) BAD_DUMP)
 	ROM_END
 
+    ROM_START(nws1850)
+        ROM_REGION32_BE(0x10000, "eprom", 0)
+        ROM_SYSTEM_BIOS(0, "nws1850", "SONY NET WORK STATION MC68030 Monitor Release 1.2")
+        // TODO: use non-combined ones
+        ROMX_LOAD("NWS-1800.combined", 0x00000, 0x10000, CRC(c5959e3c) SHA1(a2561be4c60f788c378f544937e46bee2f77b728), ROM_BIOS(0))
+    ROM_END
+
 } // anonymous namespace
 
 // Machine definitions
-//   YEAR  NAME    P  C  MACHINE INPUT   CLASS           INIT         COMPANY FULLNAME   FLAGS
-COMP(1987, nws831, 0, 0, nws831, nws8xx, news_iop_state, init_common, "Sony", "NWS-831", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
+//   YEAR  NAME     P  C  MACHINE  INPUT   CLASS               INIT         COMPANY FULLNAME    FLAGS
+COMP(1987, nws831,  0, 0, nws831,  nws8xx, news_iop_020_state, init_common, "Sony", "NWS-831",  MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
+COMP(1989, nws1850, 0, 0, nws1850, nws8xx, news_iop_030_state, init_common, "Sony", "NWS-1850", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
