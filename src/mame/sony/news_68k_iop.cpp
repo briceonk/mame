@@ -2,33 +2,42 @@
 // copyright-holders:Brice Onken
 
 /*
- * Sony NEWS first generation dual-processor 68k systems
+ * Sony NEWS dual-processor 68k systems
  *
  * The NWS-800 series was the first model of NEWS workstation. The design was also turned into the NWS-900 series for
  * server use. The later NWS-1800 and NWS-3800 models use the same system design concept as the 800 series (dual-CPU).
- * The NWS-1800/1900 series is especially similar to the NWS-800/900 series in terms of overall design, even though some peripheral
- * chips are different and the custom MMU is not needed because the 1800/1900 design uses the '030.
+ * The NWS-1800/1900 series is especially similar to the NWS-800/900 series in terms of overall design, even though some
+ * peripheral chips are different and the custom MMU is not needed because the 1800/1900 design uses the '030.
  *
- * The NWS-800 series uses one '020 as the I/O Processor (IOP). This processor is responsible for booting the system
- * and also runs a small sub-OS (called iopboot) with processes for handling DMA and interrupts for data-intensive peripherals
- * like SCSI, Ethernet, etc. The Main Processor (often referred to, confusingly, as the CPU) runs NEWS-OS (BSD derivative),
- * and uses a block of main memory allocated for CPU<->IOP interprocessor communication to trigger I/O.
- * The CPU and IOP interrupt each other whenever they need to communicate, after populating main memory with whatever data is needed.
- * The CPU delegates almost all I/O to the IOP (as the DMA controller), only handling I/O for some VME bus peripherals.
- * The CPU bus (on the NWS-800, this is routed through the MMU) is often called the Hyperbus. The NWS-1800/1900/3800 series and the single-CPU
- * 68k and R3000 models explictly call this the Hyperbus, but it is unclear if the NWS-800's CPU bus was only referred to that retroactively or not.
- * There are a couple of mentions of the Hyperbus in NEWS-OS 4 related to even the NWS-800, but the NWS-1xxx/3xxx series were already released by the time NEWS-OS 4 was.
- * So, for clarity due to the number of busses on this system, the Hyperbus term is used throughout this code, but it may or may not be a 100% accurate description.
- * The Hyperbus is directly connected to main memory, the system ROM, and the VME bus interface. Everything else is connected to the I/O
- * bus. The IOP, CPU/MMU, and VME bus can all access the Hyperbus through a buffer. As far as I can tell, nothing on the Hyperbus
- * can talk to the I/O bus, only the IOP is able to do that.
+ * The NWS-800 series uses one '020 as the I/O Processor (IOP). This processor is responsible for booting the system and
+ * also runs a small sub-OS (called iopboot) with processes for handling DMA and interrupts for data-intensive
+ * peripherals like SCSI, Ethernet, etc. The Main Processor (often referred to, confusingly, as the CPU) runs NEWS-OS
+ * (BSD derivative), and uses a block of main memory allocated for CPU<->IOP interprocessor communication to trigger I/O.
+ * The CPU and IOP interrupt each other whenever they need to communicate, after populating main memory with whatever
+ * data is needed. The CPU delegates almost all I/O to the IOP (as the DMA controller), only handling I/O for some VME
+ * bus peripherals. The CPU bus (on the NWS-800, this is routed through the MMU) is often called the Hyperbus. The
+ * NWS-1800/1900/3800 series and the single-CPU 68k and R3000 models explicitly call this the Hyperbus, but it is
+ * unclear if the NWS-800's CPU bus was only referred to that retroactively or not. There are a couple of mentions of
+ * the Hyperbus in NEWS-OS 4 related to even the NWS-800, but the NWS-1xxx/3xxx series were already released by the time
+ * NEWS-OS 4 was. So, for clarity due to the number of busses on this system, the Hyperbus term is used throughout this
+ * code, but it may or may not be a 100% accurate description. The Hyperbus is directly connected to main memory, the
+ * system ROM, and the VME bus interface. Everything else is connected to the I/O bus. The IOP, CPU/MMU, and VME bus can
+ * all access the Hyperbus through a buffer. As far as I can tell, nothing on the Hyperbus can talk to the I/O bus, only
+ * the IOP is able to do that.
+ *
+ * As mentioned above, the NWS-1800 and NWS-1900 series are based on the same architecture as the NWS-800/900. There are
+ * a few differences, however. Since their IOP is more advanced (just like the CPU), it runs a more advanced sub-OS.
+ * This is called rtx in NEWS-OS 3 and mrx in NEWS-OS 4.
  *
  *  Supported:
  *   - NWS-831
+ *   - NWS-1850
  *
  *  Not supported yet:
  *   - All other NWS-8xx workstations
  *   - NWS-9xx servers (2x '020)
+ *   - All other NWS-18xx workstations
+ *   - NWS-19xx servers (2x '030)
  *
  * Known NWS-800 Series Base Configurations
  * - NWS-811: Jun 1987, 4MB RAM, no cache, diskless
@@ -50,13 +59,15 @@
  *
  * TODO:
  *   - MMU emulation improvements (are all the right status bits set? any missing features? etc)
- *   - Debug general OS issues - random segfaults when running `ps`, system sometimes fails to shutdown when running `shutdown -x now` after using the networking stack, etc.
+ *   - Debug general OS issues - random segfaults when running `ps`, system sometimes fails to shutdown when running
+ *     `shutdown -x now` after using the networking stack, etc.
  *   - AST (Asynchronous System Trap) emulation
  *   - System cache emulation
  *   - Expansion slots (I/O Bus and VMEBus)
  *   - Networking is very flaky, especially on NEWS-OS 4.
  *   - Graphics, kbms, and parallel port emulation
- *   - Hyperbus handshake for IOP and CPU accesses. The bus has arbitration circuitry to prevent bus contention when both the CPU and IOP are trying to access the hyperbus (RAM and VME)
+ *   - Hyperbus handshake for IOP and CPU accesses. The bus has arbitration circuitry to prevent bus contention when
+ *     both the CPU and IOP are trying to access the hyperbus (RAM and VME)
  */
 
 #include "emu.h"
@@ -111,8 +122,8 @@ namespace
 	public:
 		static constexpr feature_type unemulated_features() { return feature::GRAPHICS; }
 
-		news_iop_base_state(machine_config const &mconfig, device_type type, char const *tag) :
-			driver_device(mconfig, type, tag),
+		news_iop_base_state(machine_config const &mconfig, device_type type, char const *tag) : driver_device(
+				mconfig, type, tag),
 			m_iop(*this, "iop"),
 			m_cpu(*this, "cpu"),
 			m_mmu(*this, "mmu"),
@@ -136,7 +147,8 @@ namespace
 				{INPUT_LINE_IRQ4, {CPU}},
 				{INPUT_LINE_IRQ5, {SCC, SCC_PERIPHERAL}},
 				{INPUT_LINE_IRQ6, {TIMEOUT, FDCIRQ}},
-				{INPUT_LINE_IRQ7, {FDCDRQ}} }),
+				{INPUT_LINE_IRQ7, {FDCDRQ}}
+			}),
 			cpu_irq_line_map({
 				// AST is excluded from this check
 				{INPUT_LINE_IRQ2, CPIRQ1},
@@ -144,7 +156,8 @@ namespace
 				{INPUT_LINE_IRQ4, CPIRQ3},
 				{INPUT_LINE_IRQ5, IOPIRQ5},
 				{INPUT_LINE_IRQ6, TIMER},
-				{INPUT_LINE_IRQ7, PERR} })
+				{INPUT_LINE_IRQ7, PERR}
+			}), m_cpu_bus_error_timer(nullptr)
 		{
 		}
 
@@ -152,8 +165,8 @@ namespace
 
 	protected:
 		// driver_device overrides
-		virtual void machine_start() override ATTR_COLD;
-		virtual void machine_reset() override ATTR_COLD;
+		void machine_start() override ATTR_COLD;
+		void machine_reset() override ATTR_COLD;
 
 		// address maps
 		void iop_map(address_map &map) ATTR_COLD;
@@ -179,7 +192,7 @@ namespace
 			FDCDRQ          // DRQ from FDC
 		};
 		static constexpr std::array iop_irq_names = {"CPIRQ"sv, "SCSI_IRQ"sv, "SCSI_DRQ"sv, "LANCE"sv, "CPU"sv, "SCC"sv, "SCC_PERIPHERAL"sv, "TIMEOUT"sv, "FDCIRQ"sv, "FDCDRQ"sv};
-		static constexpr uint32_t iop_nmi_mask = (1 << SCSI_IRQ) | (1 << SCC) | (1 << LANCE) | (1 << FDCIRQ) | (1 << FDCDRQ);
+		static constexpr uint32_t iop_nmi_mask = 1 << SCSI_IRQ | 1 << SCC | 1 << LANCE | 1 << FDCIRQ | 1 << FDCDRQ;
 
 		template <iop_irq_number Number>
 		void iop_irq_w(int state);
