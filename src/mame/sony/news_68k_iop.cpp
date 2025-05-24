@@ -82,7 +82,6 @@
 #include "bus/rs232/rs232.h"
 
 #include "cpu/m68000/m68020.h"
-#include "cpu/m68000/m68030.h"
 
 #include "machine/am79c90.h"
 #include "machine/bankdev.h"
@@ -113,8 +112,6 @@
 #define VERBOSE (LOG_GENERAL)
 
 #include "logmacro.h"
-
-#include <variant>
 
 namespace
 {
@@ -160,7 +157,8 @@ namespace
 				{INPUT_LINE_IRQ5, IOPIRQ5},
 				{INPUT_LINE_IRQ6, TIMER},
 				{INPUT_LINE_IRQ7, PERR}
-			}), m_cpu_bus_error_timer(nullptr) {
+			}), m_cpu_bus_error_timer(nullptr)
+		{
 		}
 
 		void init_common() ATTR_COLD;
@@ -263,7 +261,6 @@ namespace
 		TIMER_CALLBACK_MEMBER(bus_error_off_cpu);
 
 		// CPUs (2x 68020, but only the main processor has an FPU)
-		std::variant<std::monostate, required_device<m68020_device>, required_device<m68030_device>> m_cpu_test;
 		required_device<m68020_device> m_iop;    // I/O Processor (BSP, brings up system)
 		required_device<m68020fpu_device> m_cpu; // Main Processor
 
@@ -431,19 +428,10 @@ namespace
 		}
 	}
 
-	// helper for dealing with 68020/30
-	template<class... Ts>
-	struct overloads : Ts... { using Ts::operator()...; };
-
 	void news_iop_base_state::cpureset_w(uint8_t data)
 	{
 		LOG("Write CPURESET = 0x%x\n", data);
 		m_cpu->set_input_line(INPUT_LINE_HALT, data ? 0 : 1);
-		auto cpu_set_input_line = overloads {
-			[](std::monostate, int linenum, int state) {},
-			[](auto& arg, int linenum, int state) { arg->set_input_line(linenum, state); }
-		};
-		std::visit(cpu_set_input_line, m_cpu_test, INPUT_LINE_HALT, data ? 0 : 1);
 	}
 
 	uint8_t news_iop_base_state::rtcreg_r()
