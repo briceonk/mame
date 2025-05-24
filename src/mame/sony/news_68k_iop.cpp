@@ -115,6 +115,7 @@ namespace
 
 	class news_iop_020_state;
 	class news_iop_030_state;
+
 	class news_iop_base_state : public driver_device
 	{
 		// TODO: remove requirement for friend classes - needed at the moment for memory map stuff
@@ -710,38 +711,54 @@ namespace
 
 	void news_iop_base_state::hyperbus_map(address_map &map)
 	{
+		// VME Bus
+		map(0x02000000, 0x02ffffff); // TODO: ???
+
+		// System ROM
+		map(0x03000000, 0x0300ffff).rom().region("eprom", 0).mirror(0x007f0000);
+
+		// VME bus I/O TODO: 1850 map says 0x03800000-0x03fffff - why did I do it this way?
+		map(0x03900000, 0x039fffff).rw(FUNC(news_iop_base_state::vme_bus_error_r), FUNC(news_iop_base_state::vme_bus_error_w)); // TODO: full region start/end
+
+		// CPU Control Registers
+		map(0x04400000, 0x04400000); // ROMDIS TODO: 18xx version
+		map(0x04400001, 0x04400001); // 8xx MMUEN, 18xx nothing
+		map(0x04400002, 0x04400002).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ3>));
+		map(0x04400003, 0x04400003).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ5>));
+		map(0x04400004, 0x04400004).w(FUNC(news_iop_base_state::cpu_inten_w<TIMER>));
+		map(0x04400005, 0x04400005); // 8xx CACHEEN, TODO: 18xx LED2
+		map(0x04400006, 0x04400006).w(FUNC(news_iop_base_state::cpu_inten_w<PERR>));
+		map(0x04400007, 0x04400007); // 8xx nothing, TODO: 18xx LED1
+
+		// Interprocessor communication interrupt control
+		map(0x04800000, 0x04800000).lw8([this] (uint8_t data) { iop_irq_w<CPU>(1); }, "INT_IOP");
+
+		// Asynchronous System Trap control
+		map(0x05800000, 0x05800000).w(FUNC(news_iop_base_state::astreset_w));
+		map(0x05800001, 0x05800001).w(FUNC(news_iop_base_state::astset_w));
+
+		// Bus Error Status Register
+		map(0x05c00000, 0x05c00000).r(FUNC(news_iop_base_state::berr_status_r)); /// TODO: 18xx compat
 	}
 
 	void news_iop_020_state::mmu_map(address_map &map)
 	{
 		hyperbus_map(map);
 
-		map(0x03000000, 0x0300ffff).rom().region("eprom", 0).mirror(0x007f0000);
-
-		// VME bus
-		map(0x03900000, 0x039fffff).rw(FUNC(news_iop_base_state::vme_bus_error_r), FUNC(news_iop_base_state::vme_bus_error_w)); // TODO: full region start/end
-
-		// Various platform control registers (MMU and otherwise)
+		// 8xx-specific CPU Control Registers
 		map(0x04400000, 0x04400000).w(FUNC(news_iop_020_state::mmu_romdis_w));
 		map(0x04400001, 0x04400001).w(FUNC(news_iop_020_state::mmuen_w));
-		map(0x04400002, 0x04400002).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ3>));
-		map(0x04400003, 0x04400003).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ5>));
-		map(0x04400004, 0x04400004).w(FUNC(news_iop_base_state::cpu_inten_w<TIMER>));
 		map(0x04400005, 0x04400005).lw8([this] (uint8_t data)
 										{
 											LOGMASKED(LOG_MEMORY, "(%s) Write CACHEEN = 0x%x\n", machine().describe_context(), data);
 										}, "CACHEEN");
-		map(0x04400006, 0x04400006).w(FUNC(news_iop_base_state::cpu_inten_w<PERR>));
-		map(0x04800000, 0x04800000).lw8([this] (uint8_t data) { iop_irq_w<CPU>(1); }, "INT_IOP");
-		map(0x04c00000, 0x04c00000).select(0x10000000).w(m_mmu, FUNC(news_020_mmu_device::clear_entries));
 
+		// MMU control
+		map(0x04c00000, 0x04c00000).select(0x10000000).w(m_mmu, FUNC(news_020_mmu_device::clear_entries));
 		map(0x05000000, 0x05000000).select(0x400000).lw8([this] (offs_t offset, uint8_t data)
 														 {
 															 LOGMASKED(LOG_MEMORY, "%s cache clear = 0x%x (%s)\n", (offset & 0x400000) ? "system" : "user", data, machine().describe_context());
 														 }, "CACHE_CLR");
-		map(0x05800000, 0x05800000).w(FUNC(news_iop_base_state::astreset_w));
-		map(0x05800001, 0x05800001).w(FUNC(news_iop_base_state::astset_w));
-		map(0x05c00000, 0x05c00000).r(FUNC(news_iop_base_state::berr_status_r));
 		map(0x06000000, 0x061fffff).rw(m_mmu, FUNC(news_020_mmu_device::mmu_entry_r), FUNC(news_020_mmu_device::mmu_entry_w)).select(0x10000000);
 	}
 
