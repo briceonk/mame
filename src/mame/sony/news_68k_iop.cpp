@@ -65,7 +65,7 @@
  *   - System cache emulation
  *   - Expansion slots (I/O Bus and VMEBus)
  *   - Networking is very flaky, especially on NEWS-OS 4.
- *   - Graphics, kbms, and parallel port emulation
+ *   - Graphics, kb/ms, and parallel port emulation
  *   - Hyperbus handshake for IOP and CPU accesses. The bus has arbitration circuitry to prevent bus contention when
  *     both the CPU and IOP are trying to access the hyperbus (RAM and VME)
  */
@@ -73,7 +73,6 @@
 #include "emu.h"
 
 #include "news_020_mmu.h"
-#include "news_hid.h"
 #include "news_iop_scsi.h"
 
 #include "bus/nscsi/cd.h"
@@ -84,19 +83,15 @@
 #include "cpu/m68000/m68020.h"
 
 #include "machine/am79c90.h"
-#include "machine/bankdev.h"
 #include "machine/msm58321.h"
 #include "machine/ncr5380.h"
 #include "machine/nscsi_bus.h"
 #include "machine/pit8253.h"
 #include "machine/ram.h"
-#include "machine/timekpr.h"
 #include "machine/upd765.h"
 #include "machine/z80scc.h"
 
 #include "imagedev/floppy.h"
-
-#include "formats/pc_dsk.h"
 
 #define LOG_INTERRUPT (1U << 1)
 #define LOG_ALL_INTERRUPT (1U << 2)
@@ -110,27 +105,38 @@
 #define LOG_RTC (1U << 10)
 
 #define VERBOSE (LOG_GENERAL)
-
 #include "logmacro.h"
+
+#include <map>
 
 namespace
 {
 	using namespace std::literals::string_view_literals;
 
+	class news_iop_020_state;
+	class news_iop_030_state;
 	class news_iop_base_state : public driver_device
 	{
+		// TODO: remove requirement for friend classes - needed at the moment for memory map stuff
+		friend class news_iop_020_state;
+		friend class news_iop_030_state;
+
 	public:
 		static constexpr feature_type unemulated_features() { return feature::GRAPHICS; }
 
-		news_iop_base_state(machine_config const &mconfig, device_type type, char const *tag) : driver_device(
-				mconfig, type, tag),
+		void init_common() ATTR_COLD;
+
+		// TODO: make this virtual and protected or separate per subclass?
+		void iop_autovector_map(address_map &map) ATTR_COLD;
+
+	protected:
+		news_iop_base_state(machine_config const &config, device_type type, char const *tag) : driver_device(
+				config, type, tag),
 			m_iop(*this, "iop"),
 			m_cpu(*this, "cpu"),
-			m_mmu(*this, "mmu"),
 			m_ram(*this, "ram"),
 			m_eprom(*this, "eprom"),
 			m_idrom(*this, "idrom"),
-			m_rtc(*this, "rtc"),
 			m_interval_timer(*this, "interval_timer"),
 			m_scc_external(*this, "scc_external"),
 			m_scc_peripheral(*this, "scc_peripheral"),
@@ -161,18 +167,14 @@ namespace
 		{
 		}
 
-		void init_common() ATTR_COLD;
-
-	protected:
 		// driver_device overrides
 		void machine_start() override ATTR_COLD;
 		void machine_reset() override ATTR_COLD;
 
 		// address maps
-		void iop_map(address_map &map) ATTR_COLD;
-		void iop_autovector_map(address_map &map) ATTR_COLD;
-		void mmu_map(address_map &map) ATTR_COLD;
-		void cpu_map(address_map &map) ATTR_COLD;
+		void iop_map_common(address_map &map) ATTR_COLD;
+		void hyperbus_map(address_map &map) ATTR_COLD;
+		virtual void install_ram() = 0; // TODO: find better way to do this?
 
 		// machine config
 		void common(machine_config &config) ATTR_COLD;
@@ -236,10 +238,6 @@ namespace
 		void motoron_w(uint8_t data);
 		void powoff_w(uint8_t data);
 		void cpureset_w(uint8_t data);
-		uint8_t rtcreg_r();
-		void rtcreg_w(uint8_t data);
-		void rtcsel_w(uint8_t data);
-		void set_rtc_data_bit(uint8_t bit_number, int data);
 		uint32_t scsi_dma_r(offs_t offset, uint32_t mem_mask);
 		void scsi_dma_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 		void scsi_drq_handler(int status);
@@ -250,8 +248,7 @@ namespace
 		void update_dcd();
 
 		// Platform hardware used by the main processor
-		void cpu_romdis_w(uint8_t data);
-		void mmuen_w(uint8_t data);
+		// TODO: move this to 1850 void cpu_romdis_w(uint8_t data);
 		uint8_t berr_status_r();
 		void astreset_w(uint8_t data);
 		void astset_w(uint8_t data);
@@ -264,14 +261,12 @@ namespace
 		required_device<m68020_device> m_iop;    // I/O Processor (BSP, brings up system)
 		required_device<m68020fpu_device> m_cpu; // Main Processor
 
-		// Memory devices and main CPU's MMU
-		required_device<news_020_mmu_device> m_mmu;
+		// Memory devices
 		required_device<ram_device> m_ram;
 		required_region_ptr<u32> m_eprom;
 		required_region_ptr<u32> m_idrom;
 
 		// Platform hardware
-		required_device<msm58321_device> m_rtc;
 		required_device<pit8253_device> m_interval_timer;
 		required_device<scc8530_device> m_scc_external;
 		required_device<scc8530_device> m_scc_peripheral;
@@ -313,19 +308,45 @@ namespace
     class news_iop_020_state : public news_iop_base_state
     {
     public:
-        news_iop_020_state(machine_config const &mconfig, device_type type, char const *tag) : news_iop_base_state(mconfig, type, tag)
+        news_iop_020_state(machine_config const &config, device_type type, char const *tag) :
+    	news_iop_base_state(config, type, tag),
+    	m_mmu(*this, "mmu"),
+    	m_rtc(*this, "rtc")
         {}
 
         void nws831(machine_config &config) ATTR_COLD;
+
+    protected:
+    	void cpu_map(address_map &map) ATTR_COLD;
+    	void mmu_map(address_map &map) ATTR_COLD;
+    	void iop_map(address_map &map) ATTR_COLD;
+    	void install_ram() override;
+
+    	// MMU helper functions
+    	void mmuen_w(uint8_t data);
+    	void mmu_romdis_w(uint8_t data);
+
+    	// RTC helper functions
+    	uint8_t rtcreg_r();
+    	void rtcreg_w(uint8_t data);
+    	void rtcsel_w(uint8_t data);
+    	void set_rtc_data_bit(uint8_t bit_number, int data);
+
+    	// 8xx/9xx-specific devices
+    	required_device<news_020_mmu_device> m_mmu;
+    	required_device<msm58321_device> m_rtc;
     };
 
     class news_iop_030_state : public news_iop_base_state
     {
     public:
-        news_iop_030_state(machine_config const &mconfig, device_type type, char const *tag) : news_iop_base_state(mconfig, type, tag)
+        news_iop_030_state(machine_config const &config, device_type type, char const *tag) : news_iop_base_state(config, type, tag)
         {}
 
         void nws1850(machine_config &config) ATTR_COLD;
+
+    protected:
+    	void install_ram() override;
     };
 
 	void news_iop_base_state::machine_start()
@@ -335,7 +356,8 @@ namespace
 		m_net_ram = std::make_unique<u16[]>(NET_RAM_SIZE);
 		save_pointer(NAME(m_net_ram), NET_RAM_SIZE);
 
-		m_mmu->space(0).install_ram(0x0, m_ram->mask(), m_ram->pointer());
+		install_ram();
+		// m_mmu->space(0).install_ram(0x0, m_ram->mask(), m_ram->pointer());
 
 		// Save state support
 		save_item(NAME(m_iop_intst));
@@ -406,7 +428,7 @@ namespace
 	{
 		constexpr int HD_RATE = 500000;
 		constexpr int DD_RATE = 250000; // TODO: Test DD rate when image is available
-		const int rate = (data > 0) ? DD_RATE : HD_RATE; // 0 = HD, 1 = DD
+		const int rate = data > 0 ? DD_RATE : HD_RATE; // 0 = HD, 1 = DD
 
 		LOG("Write MIN = 0x%x, set rate to %s (%s)\n", data, rate == HD_RATE ? "HD" : "DD", machine().describe_context());
 		m_fdc->set_rate(rate);
@@ -434,7 +456,7 @@ namespace
 		m_cpu->set_input_line(INPUT_LINE_HALT, data ? 0 : 1);
 	}
 
-	uint8_t news_iop_base_state::rtcreg_r()
+	uint8_t news_iop_020_state::rtcreg_r()
 	{
 		m_rtc->cs1_w(1);
 		m_rtc->cs2_w(1);
@@ -448,7 +470,7 @@ namespace
 		return result;
 	}
 
-	void news_iop_base_state::rtcreg_w(uint8_t data)
+	void news_iop_020_state::rtcreg_w(uint8_t data)
 	{
 		LOGMASKED(LOG_RTC, "rtc w 0x%x\n", data);
 		m_rtc->cs1_w(1);
@@ -464,7 +486,7 @@ namespace
 		m_rtc->cs2_w(0);
 	}
 
-	void news_iop_base_state::rtcsel_w(uint8_t data)
+	void news_iop_020_state::rtcsel_w(uint8_t data)
 	{
 		LOGMASKED(LOG_RTC, "rtc sel w 0x%x\n", data);
 		m_rtc->cs1_w(1);
@@ -480,7 +502,7 @@ namespace
 		m_rtc->cs2_w(0);
 	}
 
-	void news_iop_base_state::set_rtc_data_bit(uint8_t bit_number, int data)
+	void news_iop_020_state::set_rtc_data_bit(uint8_t bit_number, int data)
 	{
 		const uint8_t bit = 1 << bit_number;
 		m_rtc_data = (m_rtc_data & ~bit) | (data ? bit : 0x0);
@@ -559,22 +581,19 @@ namespace
 	{
 	}
 
-	void news_iop_base_state::iop_map(address_map &map)
-	{
+	void news_iop_base_state::iop_map_common(address_map &map) {
 		map.unmap_value_low();
+
 		// Silence unmapped read/write warnings during memory probe - whatever RAM is present will be installed over top of this region
 		map(0x00000000, 0x00ffffff).noprw();
 
+		// System ROM
 		map(0x03000000, 0x0300ffff).rom().region("eprom", 0).mirror(0x007f0000);
 
 		// IOP bus expansion I/O
 		map(0x20000000, 0x20ffffff).rw(FUNC(news_iop_base_state::extio_bus_error_r),FUNC(news_iop_base_state::extio_bus_error_w)).mirror(0x1f000000);
 
-		// Expansion slot SCC (bus errors here kill iopboot, so the probe process may not use bus errors, at least not with the same setup as extio)
-		// TODO: Does the fact that NEWS-OS 4 poke at these addresses mean that something is not configured properly elsewhere?
-		map(0x4c000100, 0x4c0001ff).noprw();
-
-		map(0x60000000, 0x60000000).r(FUNC(news_iop_base_state::iop_status_r));
+		// IOP Control Registers
 		map(0x40000000, 0x40000000).w(FUNC(news_iop_base_state::iop_inten_w<TIMEOUT>));
 		map(0x40000001, 0x40000001).w(FUNC(news_iop_base_state::min_w));
 		map(0x40000002, 0x40000002).w(FUNC(news_iop_base_state::motoron_w));
@@ -583,17 +602,58 @@ namespace
 		map(0x40000005, 0x40000005).w(FUNC(news_iop_base_state::powoff_w));
 		map(0x40000006, 0x40000006).w(FUNC(news_iop_base_state::iop_inten_w<CPU>));
 		map(0x40000007, 0x40000007).w(FUNC(news_iop_base_state::cpureset_w));
+		// The following are 1850 only
+		// 0x8 CACHEEN (1 = Enable external cache, 0 =  disable and flush external cache)
+		// 0x9 SCSIRST (1 = assert SCSI ~RESET)
+		// 0xA FDCRST (1 = assert FDC ~RESET)
+		// 0xB VMEINTEN (1 = allow VME interrupts to IOP)
+		// 0xC FDCFMT (1 = IBM format, 0 = ECMA format)
+		// 0xD PELATCHEN (Main memory parity check)
+		// 0xE LED4 (1 = on)
+		// 0xF LED3 (1 = on)
 
+		// Programmable interrupt timer registers
 		map(0x42000000, 0x42000003).rw(m_interval_timer, FUNC(pit8253_device::read), FUNC(pit8253_device::write));
+
+		// LH8530A registers
+		map(0x4a000000, 0x4a000003).rw(m_scc_peripheral, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)); // kb/ms
+		map(0x4c000000, 0x4c000003).rw(m_scc_external, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));   // rs232
+
+		// Expansion slot SCC (bus errors here kill iopboot, so the probe process may not use bus errors, at least not with the same setup as extio)
+		// TODO: Does the fact that NEWS-OS 4 poke at these addresses mean that something is not configured properly elsewhere?
+		// TODO: check behavior of this on 1850
+		map(0x4c000100, 0x4c0001ff).noprw();
+
+		// IOP status register
+		// TODO: make this function abstract b/c impl is different between 020/030 IOPs
+		map(0x60000000, 0x60000000).r(FUNC(news_iop_base_state::iop_status_r));
+
+		// SCSI pseudo-DMA port
+		// TODO: this might need to be a virtual function
+		map(0x64000000, 0x64000003).rw(FUNC(news_iop_base_state::scsi_dma_r), FUNC(news_iop_base_state::scsi_dma_w));
+
+		// Ethernet buffer memory
+		// TODO: is mem_mask needed on read?
+		map(0x66000000, 0x66003fff).lrw16([this] (offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
+										  [this] (offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
+
+		// LANCE registers
+		map(0x68000000, 0x68000003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
+
+		// CPU interprocessor interrupt registers
+		map(0x6a000001, 0x6a000001).lw8(NAME([this] (uint8_t data) { cpu_irq_w<IOPIRQ5>(data > 0); }));
+		map(0x6a000002, 0x6a000002).lw8(NAME([this] (uint8_t data) { cpu_irq_w<IOPIRQ3>(data > 0); }));
+	}
+
+	void news_iop_020_state::iop_map(address_map &map)
+	{
+		iop_map_common(map);
 
 		map(0x44000000, 0x44000003).m(m_fdc, FUNC(upd765a_device::map));
 		map(0x44000007, 0x44000007).rw(m_fdc, FUNC(upd765a_device::dma_r), FUNC(upd765a_device::dma_w));
 
-		map(0x46000001, 0x46000001).rw(FUNC(news_iop_base_state::rtcreg_r), FUNC(news_iop_base_state::rtcreg_w));
-		map(0x46000002, 0x46000002).w(FUNC(news_iop_base_state::rtcsel_w));
-
-		map(0x4a000000, 0x4a000003).rw(m_scc_peripheral, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)); // kbms
-		map(0x4c000000, 0x4c000003).rw(m_scc_external, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));   // rs232
+		map(0x46000001, 0x46000001).rw(FUNC(news_iop_020_state::rtcreg_r), FUNC(news_iop_020_state::rtcreg_w));
+		map(0x46000002, 0x46000002).w(FUNC(news_iop_020_state::rtcsel_w));
 
 		map(0x4e000000, 0x4e000007).r(m_scsi, FUNC(ncr5380_device::read));
 		map(0x4e000000, 0x4e000007).lrw8(NAME([this] (offs_t offset) {
@@ -602,26 +662,26 @@ namespace
 			m_scsi_dma->write_wrapper(false, offset, data);
 		}));
 
-		map(0x6a000001, 0x6a000001).lw8(NAME([this] (uint8_t data) { cpu_irq_w<IOPIRQ5>(data > 0); }));
-		map(0x6a000002, 0x6a000002).lw8(NAME([this] (uint8_t data) { cpu_irq_w<IOPIRQ3>(data > 0); }));
-
-		map(0x64000000, 0x64000003).rw(FUNC(news_iop_base_state::scsi_dma_r), FUNC(news_iop_base_state::scsi_dma_w));
-
-		map(0x66000000, 0x66003fff).lrw16([this] (offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
-										  [this] (offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
-
-		map(0x68000000, 0x68000003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
-
 		map(0x80000000, 0x8001ffff).ram(); // IOP work RAM
 	}
 
-	void news_iop_base_state::cpu_romdis_w(uint8_t data)
+	void news_iop_020_state::install_ram()
+	{
+		m_mmu->space(0).install_ram(0x0, m_ram->mask(), m_ram->pointer());
+	}
+
+	void news_iop_030_state::install_ram()
+	{
+		// TODO: m_mmu->space(0).install_ram(0x0, m_ram->mask(), m_ram->pointer());
+	}
+
+	void news_iop_020_state::mmu_romdis_w(uint8_t data)
 	{
 		LOG("(%s) CPU ROMDIS 0x%x\n", machine().describe_context(), data);
 		m_mmu->set_rom_enable(data == 0);
 	}
 
-	void news_iop_base_state::mmuen_w(uint8_t data)
+	void news_iop_020_state::mmuen_w(uint8_t data)
 	{
 		LOGMASKED(LOG_MEMORY, "(%s) CPU MMUEN 0x%x\n", machine().describe_context(), data);
 		const bool mmu_enable = data > 0;
@@ -649,16 +709,22 @@ namespace
 		LOGMASKED(LOG_AST, "(%s) AST_SET 0x%x\n", machine().describe_context(), data);
 	}
 
-	void news_iop_base_state::mmu_map(address_map &map)
+	void news_iop_base_state::hyperbus_map(address_map &map)
 	{
+	}
+
+	void news_iop_020_state::mmu_map(address_map &map)
+	{
+		hyperbus_map(map);
+
 		map(0x03000000, 0x0300ffff).rom().region("eprom", 0).mirror(0x007f0000);
 
 		// VME bus
 		map(0x03900000, 0x039fffff).rw(FUNC(news_iop_base_state::vme_bus_error_r), FUNC(news_iop_base_state::vme_bus_error_w)); // TODO: full region start/end
 
 		// Various platform control registers (MMU and otherwise)
-		map(0x04400000, 0x04400000).w(FUNC(news_iop_base_state::cpu_romdis_w));
-		map(0x04400001, 0x04400001).w(FUNC(news_iop_base_state::mmuen_w));
+		map(0x04400000, 0x04400000).w(FUNC(news_iop_020_state::mmu_romdis_w));
+		map(0x04400001, 0x04400001).w(FUNC(news_iop_020_state::mmuen_w));
 		map(0x04400002, 0x04400002).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ3>));
 		map(0x04400003, 0x04400003).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ5>));
 		map(0x04400004, 0x04400004).w(FUNC(news_iop_base_state::cpu_inten_w<TIMER>));
@@ -680,7 +746,7 @@ namespace
 		map(0x06000000, 0x061fffff).rw(m_mmu, FUNC(news_020_mmu_device::mmu_entry_r), FUNC(news_020_mmu_device::mmu_entry_w)).select(0x10000000);
 	}
 
-	void news_iop_base_state::cpu_map(address_map &map)
+	void news_iop_020_state::cpu_map(address_map &map)
 	{
 		map(0x0, 0xffffffff).lrw32(
 				[this] (offs_t offset, uint32_t mem_mask) {
@@ -740,24 +806,24 @@ namespace
 
 	void news_iop_base_state::int_check_iop()
 	{
-	   const int active_irq = m_iop_intst & (m_iop_inten | iop_nmi_mask);
-	   for (auto irq : iop_irq_line_map)
+	   const uint32_t active_irq = m_iop_intst & (m_iop_inten | iop_nmi_mask);
+	   for (const auto& [input_line, irq_inputs] : iop_irq_line_map)
 	   {
 			// Calculate state of input pin (logical OR of all attached inputs)
 			bool state = false;
-			for (auto irq_input : irq.second)
+			for (auto irq_input : irq_inputs)
 			{
-				state |= active_irq & (1 << irq_input);
+				state |= active_irq & 1 << irq_input;
 			}
 
 			// Update input pin status if it has changed
-			if (m_iop->input_line_state(irq.first) != state) {
-				if (irq.first != INPUT_LINE_IRQ6)
+			if (m_iop->input_line_state(input_line) != state) {
+				if (input_line != INPUT_LINE_IRQ6)
 				{
-					LOGMASKED(LOG_INTERRUPT, "Setting IOP input line %d to %d\n", irq.first, state ? 1 : 0);
+					LOGMASKED(LOG_INTERRUPT, "Setting IOP input line %d to %d\n", input_line, state ? 1 : 0);
 				}
 
-				m_iop->set_input_line(irq.first, state ? 1 : 0);
+				m_iop->set_input_line(input_line, state ? 1 : 0);
 			}
 	   }
 	}
@@ -792,7 +858,7 @@ namespace
 
 		if (state)
 		{
-			m_cpu_inten |= (1 << Number);
+			m_cpu_inten |= 1 << Number;
 		}
 		else
 		{
@@ -805,24 +871,24 @@ namespace
 
 	void news_iop_base_state::int_check_cpu()
 	{
-		const int active_irq = m_cpu_intst & m_cpu_inten;
-		for (auto irq : cpu_irq_line_map)
+		const uint32_t active_irq = m_cpu_intst & m_cpu_inten;
+		for (const auto& [input_line, irq_input] : cpu_irq_line_map)
 		{
 			// Update input pin status if it has changed
-			const bool state = BIT(active_irq, irq.second);
-			if (m_cpu->input_line_state(irq.first) != state)
+			const bool state = BIT(active_irq, irq_input);
+			if (m_cpu->input_line_state(input_line) != state)
 			{
-				if (irq.first != INPUT_LINE_IRQ6)
+				if (input_line != INPUT_LINE_IRQ6)
 				{
-					LOGMASKED(LOG_INTERRUPT, "Setting CPU input line %d to %d\n", irq.first, state ? 1 : 0);
+					LOGMASKED(LOG_INTERRUPT, "Setting CPU input line %d to %d\n", input_line, state ? 1 : 0);
 				}
 
-				m_cpu->set_input_line(irq.first, state ? 1 : 0);
+				m_cpu->set_input_line(input_line, state ? 1 : 0);
 			}
 		}
 	}
 
-	static void news_scsi_devices(device_slot_interface &device)
+	void news_scsi_devices(device_slot_interface &device)
 	{
 		device.option_add("harddisk", NSCSI_HARDDISK);
 		device.option_add("cdrom", NSCSI_CDROM);
@@ -896,7 +962,7 @@ namespace
 			dcd_state = idrom_data & (multiplexer_value == 6 ? 0x1 : 0x2);
 			LOGMASKED(LOG_PANEL, "idrom d0 [0x%02x] -> 0x%02x\n", idrom_idx, dcd_state);
 		}
-		LOGMASKED(LOG_PANEL, "mplex 0x%04x cnt 0x%04x set dcd = %d\n", multiplexer_value, m_panel_shift_count, dcd_state);
+		LOGMASKED(LOG_PANEL, "multiplex 0x%04x cnt 0x%04x set dcd = %d\n", multiplexer_value, m_panel_shift_count, dcd_state);
 		m_scc_peripheral->dcdb_w(dcd_state);
 	}
 
@@ -971,17 +1037,6 @@ namespace
 
 	void news_iop_base_state::common(machine_config &config)
 	{
-		M68020(config, m_iop, 16.67_MHz_XTAL); // TODO: this might come from a 33.3333MHz crystal divided by two
-		m_iop->set_addrmap(AS_PROGRAM, &news_iop_base_state::iop_map);
-		m_iop->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_iop_base_state::iop_autovector_map);
-
-		M68020FPU(config, m_cpu, 16.67_MHz_XTAL);
-		m_cpu->set_addrmap(AS_PROGRAM, &news_iop_base_state::cpu_map);
-
-		NEWS_020_MMU(config, m_mmu, 0);
-		m_mmu->set_addrmap(AS_PROGRAM, &news_iop_base_state::mmu_map);
-		m_mmu->set_bus_error_callback(FUNC(news_iop_base_state::cpu_bus_error));
-
 		RAM(config, m_ram);
 		m_ram->set_default_size("8M");
 		m_ram->set_extra_options("16M");
@@ -1066,7 +1121,7 @@ namespace
 		});
 
 		// Virtual device for handling SCSI DMA
-		// (workaround for 68k bus access limitiations; normally iopboot's BERR handler would deal with SCSI DMA stuff)
+		// (workaround for 68k bus access limitations; normally iopboot's BERR handler would deal with SCSI DMA stuff)
 		NEWS_IOP_SCSI_HELPER(config, m_scsi_dma);
 		m_scsi_dma->scsi_read_callback().set(m_scsi, FUNC(ncr53c80_device::read));
 		m_scsi_dma->scsi_write_callback().set(m_scsi, FUNC(ncr53c80_device::write));
@@ -1075,13 +1130,6 @@ namespace
 		m_scsi_dma->iop_halt_callback().set_inputline(m_iop, INPUT_LINE_HALT);
 		m_scsi_dma->bus_error_callback().set(FUNC(news_iop_base_state::scsi_bus_error));
 		m_scsi_dma->irq_out_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCSI_IRQ>));
-
-		// Epson RTC-58321B
-		MSM58321(config, m_rtc, 32.768_kHz_XTAL);
-		m_rtc->d0_handler().set([this] (int data) { set_rtc_data_bit(0, data); });
-		m_rtc->d1_handler().set([this] (int data) { set_rtc_data_bit(1, data); });
-		m_rtc->d2_handler().set([this] (int data) { set_rtc_data_bit(2, data); });
-		m_rtc->d3_handler().set([this] (int data) { set_rtc_data_bit(3, data); });
 	}
 
 	void news_iop_base_state::iop_autovector_map(address_map &map)
@@ -1117,6 +1165,24 @@ namespace
 	void news_iop_020_state::nws831(machine_config &config)
 	{
 		common(config);
+
+		M68020(config, m_iop, 16.67_MHz_XTAL); // TODO: this might come from a 33.3333MHz crystal divided by two
+		m_iop->set_addrmap(AS_PROGRAM, &news_iop_020_state::iop_map);
+		m_iop->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_iop_base_state::iop_autovector_map);
+
+		M68020FPU(config, m_cpu, 16.67_MHz_XTAL);
+		m_cpu->set_addrmap(AS_PROGRAM, &news_iop_020_state::cpu_map);
+
+		NEWS_020_MMU(config, m_mmu, 0);
+		m_mmu->set_addrmap(AS_PROGRAM, &news_iop_020_state::mmu_map);
+		m_mmu->set_bus_error_callback(FUNC(news_iop_base_state::cpu_bus_error));
+
+		// Epson RTC-58321B
+		MSM58321(config, m_rtc, 32.768_kHz_XTAL);
+		m_rtc->d0_handler().set([this] (int data) { set_rtc_data_bit(0, data); });
+		m_rtc->d1_handler().set([this] (int data) { set_rtc_data_bit(1, data); });
+		m_rtc->d2_handler().set([this] (int data) { set_rtc_data_bit(2, data); });
+		m_rtc->d3_handler().set([this] (int data) { set_rtc_data_bit(3, data); });
 	}
 
     void news_iop_030_state::nws1850(machine_config &config)
