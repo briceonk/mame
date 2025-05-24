@@ -357,7 +357,6 @@ namespace
 		save_pointer(NAME(m_net_ram), NET_RAM_SIZE);
 
 		install_ram();
-		// m_mmu->space(0).install_ram(0x0, m_ram->mask(), m_ram->pointer());
 
 		// Save state support
 		save_item(NAME(m_iop_intst));
