@@ -116,22 +116,12 @@ namespace
 {
 	using namespace std::literals::string_view_literals;
 
-	class news_iop_020_state;
-	class news_iop_030_state;
-
 	class news_iop_base_state : public driver_device
 	{
-		// TODO: remove requirement for friend classes - needed at the moment for memory map stuff
-		friend class news_iop_020_state;
-		friend class news_iop_030_state;
-
 	public:
 		static constexpr feature_type unemulated_features() { return feature::GRAPHICS; }
 
 		void init_common() ATTR_COLD;
-
-		// TODO: make this virtual and protected or separate per subclass?
-		void iop_autovector_map(address_map &map) ATTR_COLD;
 
 	protected:
 		news_iop_base_state(machine_config const &config, device_type type, char const *tag) : driver_device(
@@ -176,6 +166,7 @@ namespace
 
 		// address maps
 		void iop_map_common(address_map &map) ATTR_COLD;
+		void iop_autovector_map(address_map &map) ATTR_COLD;
 		void hyperbus_map(address_map &map) ATTR_COLD;
 		virtual void install_ram() = 0; // TODO: find better way to do this?
 
@@ -1274,14 +1265,14 @@ namespace
 
 		M68020(config, m_iop, 16.67_MHz_XTAL); // TODO: this might come from a 33.3333MHz crystal divided by two
 		m_iop->set_addrmap(AS_PROGRAM, &news_iop_020_state::iop_map);
-		m_iop->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_iop_base_state::iop_autovector_map);
+		m_iop->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_iop_020_state::iop_autovector_map);
 
 		M68020FPU(config, m_cpu, 16.67_MHz_XTAL);
 		m_cpu->set_addrmap(AS_PROGRAM, &news_iop_020_state::cpu_map);
 
 		NEWS_020_MMU(config, m_mmu, 0);
 		m_mmu->set_addrmap(AS_PROGRAM, &news_iop_020_state::mmu_map);
-		m_mmu->set_bus_error_callback(FUNC(news_iop_base_state::cpu_bus_error));
+		m_mmu->set_bus_error_callback(FUNC(news_iop_020_state::cpu_bus_error));
 
 		// Configure RAM options
 		m_ram->set_default_size("8M");
@@ -1303,8 +1294,8 @@ namespace
 
 		// uPD7265 FDC (Compatible with 765A except it should use Sony/ECMA format by default?)
 		UPD765A(config, m_fdc, 4'000'000); // TODO: confirm clock rate
-		m_fdc->intrq_wr_callback().set(FUNC(news_iop_base_state::iop_irq_w<FDCIRQ>));
-		m_fdc->drq_wr_callback().set(FUNC(news_iop_base_state::iop_irq_w<FDCDRQ>));
+		m_fdc->intrq_wr_callback().set(FUNC(news_iop_020_state::iop_irq_w<FDCIRQ>));
+		m_fdc->drq_wr_callback().set(FUNC(news_iop_020_state::iop_irq_w<FDCDRQ>));
 		FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
 
 		// 8xx/9xx specific SCSI details
@@ -1313,7 +1304,7 @@ namespace
 		{
 			auto &adapter = downcast<ncr5380_device &>(*device);
 			adapter.irq_handler().set([this] (int state){ m_scsi_dma->irq_w(state); });
-			adapter.drq_handler().set(*this, FUNC(news_iop_base_state::scsi_drq_handler));
+			adapter.drq_handler().set(*this, FUNC(news_iop_020_state::scsi_drq_handler));
 		});
 		m_scsi_dma->scsi_read_callback().set(m_scsi, FUNC(ncr53c80_device::read));
 		m_scsi_dma->scsi_write_callback().set(m_scsi, FUNC(ncr53c80_device::write));
@@ -1337,8 +1328,8 @@ namespace
 		m_ram->set_extra_options("32M"); // supports up to 32MBytes - what is the increment of increase? TODO: is this accurate?
 
 		// Timer configuration
-		m_interval_timer->out_handler<0>().set(FUNC(news_iop_base_state::cpu_irq_w<TIMER>));
-		m_interval_timer->out_handler<2>().set(FUNC(news_iop_base_state::iop_irq_w<TIMEOUT>));
+		m_interval_timer->out_handler<0>().set(FUNC(news_iop_030_state::cpu_irq_w<TIMER>));
+		m_interval_timer->out_handler<2>().set(FUNC(news_iop_030_state::iop_irq_w<TIMEOUT>));
 
 		// HD63265 FDC (66 used for now, similar but not the same)
 		HD63266F(config, m_fdc, 4'000'000); // TODO: clock rate, 65 differences?
