@@ -81,14 +81,17 @@
 #include "bus/rs232/rs232.h"
 
 #include "cpu/m68000/m68020.h"
+#include "cpu/m68000/m68030.h"
 
 #include "machine/am79c90.h"
 #include "machine/msm58321.h"
+#include "machine/msm6242.h"
 #include "machine/ncr5380.h"
 #include "machine/nscsi_bus.h"
 #include "machine/pit8253.h"
 #include "machine/ram.h"
 #include "machine/upd765.h"
+#include "machine/wd33c9x.h"
 #include "machine/z80scc.h"
 
 #include "imagedev/floppy.h"
@@ -143,7 +146,6 @@ namespace
 			m_scc_peripheral(*this, "scc_peripheral"),
 			m_net(*this, "net"),
 			m_fdc(*this, "fdc"),
-			m_scsi(*this, "scsi:7:am5380"),
 			m_scsi_dma(*this, "scsi_dma"),
 			m_dip_switch(*this, "FRONT_PANEL"),
 			m_serial(*this, "serial%u", 0U),
@@ -234,7 +236,7 @@ namespace
 
 		// Platform hardware used by the IOP
 		uint8_t iop_status_r();
-		void iop_romdis_w(uint8_t data);
+		virtual void iop_romdis_w(uint8_t data);
 		void min_w(uint8_t data);
 		void motoron_w(uint8_t data);
 		void powoff_w(uint8_t data);
@@ -243,11 +245,6 @@ namespace
 		void scsi_dma_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 		void scsi_drq_handler(int status);
 
-		// Front panel signal handlers
-		void handle_rts(int data);
-		void handle_dtr(int data);
-		void update_dcd();
-
 		// Platform hardware used by the main processor
 		// TODO: move this to 1850 void cpu_romdis_w(uint8_t data);
 		uint8_t berr_status_r();
@@ -255,12 +252,11 @@ namespace
 		void astset_w(uint8_t data);
 
 		// CPU timer handlers
-		void interval_timer_tick(uint8_t data);
 		TIMER_CALLBACK_MEMBER(bus_error_off_cpu);
 
-		// CPUs (2x 68020, but only the main processor has an FPU)
-		required_device<m68020_device> m_iop;    // I/O Processor (BSP, brings up system)
-		required_device<m68020fpu_device> m_cpu; // Main Processor
+		// CPUs
+		required_device<m68000_musashi_device> m_iop; // I/O Processor (BSP, brings up system)
+		required_device<m68000_musashi_device> m_cpu; // Main Processor
 
 		// Memory devices
 		required_device<ram_device> m_ram;
@@ -272,8 +268,7 @@ namespace
 		required_device<scc8530_device> m_scc_external;
 		required_device<scc8530_device> m_scc_peripheral;
 		required_device<am7990_device> m_net;
-		required_device<upd765a_device> m_fdc;
-		required_device<ncr5380_device> m_scsi;
+		required_device<upd765_family_device> m_fdc;
 		required_device<news_iop_scsi_helper_device> m_scsi_dma;
 		required_ioport m_dip_switch;
 		required_device_array<rs232_port_device, 2> m_serial;
@@ -295,15 +290,8 @@ namespace
 		uint8_t m_cpu_bus_error_status = 0;
 		emu_timer *m_cpu_bus_error_timer;
 
-		// Front panel
-		bool m_panel_clear = false;
-		bool m_panel_shift = false;
-		int m_sw1_first_read = 0;
-		int m_panel_shift_count = 0;
-		uint8_t m_rtc_data = 0;
-
 		// Other constants
-		static constexpr int NET_RAM_SIZE = 8192; // 16K RAM, in 16-bit words
+		static constexpr int NET_RAM_SIZE = 8192; // 16K RAM, in 16-bit words TODO: is the the same between 8xx/18xx?
 	};
 
     class news_iop_020_state : public news_iop_base_state
@@ -312,7 +300,8 @@ namespace
         news_iop_020_state(machine_config const &config, device_type type, char const *tag) :
     	news_iop_base_state(config, type, tag),
     	m_mmu(*this, "mmu"),
-    	m_rtc(*this, "rtc")
+    	m_rtc(*this, "rtc"),
+    	m_scsi(*this, "scsi:7:am5380")
         {}
 
         void nws831(machine_config &config) ATTR_COLD;
@@ -323,9 +312,16 @@ namespace
     	void iop_map(address_map &map) ATTR_COLD;
     	void install_ram() override;
 
+    	void iop_romdis_w(uint8_t data) override;
+
     	// MMU helper functions
     	void mmuen_w(uint8_t data);
     	void mmu_romdis_w(uint8_t data);
+
+    	// Front panel signal handlers
+    	void handle_rts(int data);
+    	void handle_dtr(int data);
+    	void update_dcd();
 
     	// RTC helper functions
     	uint8_t rtcreg_r();
@@ -333,21 +329,45 @@ namespace
     	void rtcsel_w(uint8_t data);
     	void set_rtc_data_bit(uint8_t bit_number, int data);
 
+    	// Timer functions
+    	void interval_timer_tick(uint8_t data);
+
     	// 8xx/9xx-specific devices
     	required_device<news_020_mmu_device> m_mmu;
     	required_device<msm58321_device> m_rtc;
+    	required_device<ncr5380_device> m_scsi;
+
+    	// Front panel
+    	bool m_panel_clear = false;
+    	bool m_panel_shift = false;
+    	int m_sw1_first_read = 0;
+    	int m_panel_shift_count = 0;
+
+    	//　RTC
+    	uint8_t m_rtc_data = 0;
     };
 
     class news_iop_030_state : public news_iop_base_state
     {
     public:
-        news_iop_030_state(machine_config const &config, device_type type, char const *tag) : news_iop_base_state(config, type, tag)
+        news_iop_030_state(machine_config const &config, device_type type, char const *tag) : news_iop_base_state(config, type, tag),
+    	m_rtc(*this, "rtc"),
+    	m_scsi(*this, "scsi:7:wd33c93")
         {}
 
         void nws1850(machine_config &config) ATTR_COLD;
 
     protected:
     	void install_ram() override;
+    	void cpu_map(address_map &map) ATTR_COLD;
+    	void iop_map(address_map &map) ATTR_COLD;
+
+    	// 18xx/19xx-specific devices
+    	required_device<rtc62421_device> m_rtc;
+    	required_device<wd33c9x_base_device> m_scsi;
+
+    	// Platform hardware
+    	bool m_cpu_romdis = false;
     };
 
 	void news_iop_base_state::machine_start()
@@ -367,14 +387,16 @@ namespace
 		save_item(NAME(m_cpu_bus_error));
 		save_item(NAME(m_last_berr_pc_cpu));
 		save_item(NAME(m_cpu_bus_error_status));
-		save_item(NAME(m_panel_clear));
-		save_item(NAME(m_panel_shift));
-		save_item(NAME(m_sw1_first_read));
-		save_item(NAME(m_panel_shift_count));
-		save_item(NAME(m_rtc_data));
+
+		// TODO: move these to 020 class
+		// save_item(NAME(m_panel_clear));
+		// save_item(NAME(m_panel_shift));
+		// save_item(NAME(m_sw1_first_read));
+		// save_item(NAME(m_panel_shift_count));
+		// save_item(NAME(m_rtc_data));
 	}
 
-	void news_iop_base_state::interval_timer_tick(uint8_t data)
+	void news_iop_020_state::interval_timer_tick(uint8_t data)
 	{
 		// TODO: Confirm that channel 0 drives both CPU and IOP
 		// On the NWS-1960, the 8253 uses channel 0 for the 100Hz CPU timer, channel 1 for main memory refresh, and channel 2 for the IOP timeout
@@ -421,7 +443,15 @@ namespace
 		{
 			m_iop->space(0).install_rom(0x00000000, 0x0000ffff, m_eprom);
 		}
-		m_panel_shift_count = 0; // hack, clear state from init
+	}
+
+	void news_iop_020_state::iop_romdis_w(uint8_t data)
+	{
+		news_iop_base_state::iop_romdis_w(data);
+
+		// hack, clear state from init
+		LOG("IOP ROMDIS clearing panel shift count\n");
+		m_panel_shift_count = 0;
 	}
 
 	void news_iop_base_state::min_w(uint8_t data)
@@ -602,18 +632,13 @@ namespace
 		map(0x40000005, 0x40000005).w(FUNC(news_iop_base_state::powoff_w));
 		map(0x40000006, 0x40000006).w(FUNC(news_iop_base_state::iop_inten_w<CPU>));
 		map(0x40000007, 0x40000007).w(FUNC(news_iop_base_state::cpureset_w));
-		// The following are 1850 only
-		// 0x8 CACHEEN (1 = Enable external cache, 0 =  disable and flush external cache)
-		// 0x9 SCSIRST (1 = assert SCSI ~RESET)
-		// 0xA FDCRST (1 = assert FDC ~RESET)
-		// 0xB VMEINTEN (1 = allow VME interrupts to IOP)
-		// 0xC FDCFMT (1 = IBM format, 0 = ECMA format)
-		// 0xD PELATCHEN (Main memory parity check)
-		// 0xE LED4 (1 = on)
-		// 0xF LED3 (1 = on)
 
 		// Programmable interrupt timer registers
 		map(0x42000000, 0x42000003).rw(m_interval_timer, FUNC(pit8253_device::read), FUNC(pit8253_device::write));
+
+		// Floppy disk controller registers
+		map(0x44000000, 0x44000003).m(m_fdc, FUNC(upd765_family_device::map));
+		map(0x44000007, 0x44000007).rw(m_fdc, FUNC(upd765_family_device::dma_r), FUNC(upd765_family_device::dma_w));
 
 		// LH8530A registers
 		map(0x4a000000, 0x4a000003).rw(m_scc_peripheral, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w)); // kb/ms
@@ -649,12 +674,11 @@ namespace
 	{
 		iop_map_common(map);
 
-		map(0x44000000, 0x44000003).m(m_fdc, FUNC(upd765a_device::map));
-		map(0x44000007, 0x44000007).rw(m_fdc, FUNC(upd765a_device::dma_r), FUNC(upd765a_device::dma_w));
-
+		// RTC registers
 		map(0x46000001, 0x46000001).rw(FUNC(news_iop_020_state::rtcreg_r), FUNC(news_iop_020_state::rtcreg_w));
 		map(0x46000002, 0x46000002).w(FUNC(news_iop_020_state::rtcsel_w));
 
+		// SCSI registers
 		map(0x4e000000, 0x4e000007).r(m_scsi, FUNC(ncr5380_device::read));
 		map(0x4e000000, 0x4e000007).lrw8(NAME([this] (offs_t offset) {
 			return m_scsi_dma->read_wrapper(false, offset);
@@ -662,7 +686,68 @@ namespace
 			m_scsi_dma->write_wrapper(false, offset, data);
 		}));
 
-		map(0x80000000, 0x8001ffff).ram(); // IOP work RAM
+		// IOP work RAM
+		map(0x80000000, 0x8001ffff).ram();
+	}
+
+	// TODO: dump actual IDROM from the front panel
+	uint8_t idrom_data[] = {
+		0x0, 0x9, // Model: NWS-1850
+		0x4, 0x2, // Serial
+		0x4, 0x2,
+		0x0, 0x1, // Lot ID
+		0x0, 0x0, // Reserved
+		0x0, 0x0,
+		0x0, 0x0, // chksum0
+		0x0, 0x0,
+		0x3, 0x3, // MAC
+		0xb, 0x0,
+		0x8, 0xa,
+		0x9, 0x4,
+		0x4, 0xa,
+		0x3, 0x6,
+		0x0, 0x0, // chksum1
+		0x0, 0x0
+	};
+
+	void news_iop_030_state::iop_map(address_map &map)
+	{
+		iop_map_common(map);
+
+		// 18xx/19xx-specific IOP Control Registers
+		// 0x8 CACHEEN (1 = Enable external cache, 0 =  disable and flush external cache)
+		map(0x40000009, 0x40000009).lw8([this](uint8_t data)
+								{
+									LOG("Write SCSIRST = 0x%x\n", data);
+									m_scsi->reset_w(data);
+								}, "SCSIRST");
+		// 0xA FDCRST (1 = assert FDC ~RESET)
+		// 0xB VMEINTEN (1 = allow VME interrupts to IOP)
+		// 0xC FDCFMT (1 = IBM format, 0 = ECMA format)
+		// 0xD PELATCHEN (Main memory parity check)
+		// 0xE LED4 (1 = on)
+		// 0xF LED3 (1 = on)
+
+		// RTC registers
+		map(0x46000000, 0x4600000f).rw(m_rtc, FUNC(rtc62421_device::read), FUNC(rtc62421_device::write));
+
+		// SCSI registers
+		map(0x4e000000, 0x4e000000).rw(m_scsi, FUNC(wd33c93_device::indir_addr_r), FUNC(wd33c93_device::indir_addr_w));
+		map(0x4e000001, 0x4e000001).rw(m_scsi, FUNC(wd33c93_device::indir_reg_r), FUNC(wd33c93_device::indir_reg_w));
+		map(0x64000000, 0x64000000).rw(m_scsi, FUNC(wd33c93_device::dma_r), FUNC(wd33c93_device::dma_w)); // TODO: temporary until wrapper is fixed
+
+		// Platform hardware
+		map(0x6e000000, 0x6e0000ff).lr8([this](offs_t offset) {
+			LOG("Read FRONT_ROM[0x%x] = 0x%x\n", offset, idrom_data[offset]);
+			return idrom_data[offset]; // TODO: bounds check
+		}, "FRONT_ROM");
+		map(0x6e000100, 0x6e000100).lr8([this] {
+			LOG("Read DIPSW = 0x%x\n", m_dip_switch->read());
+			return m_dip_switch->read();
+		}, "FRONT_SW");
+
+		// IOP work RAM
+		map(0x80000000, 0x8003ffff).mirror(0x7ffc0000).ram(); // TODO: mirror on 020 as well?
 	}
 
 	void news_iop_020_state::install_ram()
@@ -672,7 +757,7 @@ namespace
 
 	void news_iop_030_state::install_ram()
 	{
-		// TODO: m_mmu->space(0).install_ram(0x0, m_ram->mask(), m_ram->pointer());
+		m_cpu->space(0).install_ram(0x0, m_ram->mask(), m_ram->pointer());
 	}
 
 	void news_iop_020_state::mmu_romdis_w(uint8_t data)
@@ -726,9 +811,9 @@ namespace
 		map(0x04400002, 0x04400002).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ3>));
 		map(0x04400003, 0x04400003).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ5>));
 		map(0x04400004, 0x04400004).w(FUNC(news_iop_base_state::cpu_inten_w<TIMER>));
-		map(0x04400005, 0x04400005); // 8xx CACHEEN, TODO: 18xx LED2
+		map(0x04400005, 0x04400005); // 8xx CACHEEN, 18xx LED2
 		map(0x04400006, 0x04400006).w(FUNC(news_iop_base_state::cpu_inten_w<PERR>));
-		map(0x04400007, 0x04400007); // 8xx nothing, TODO: 18xx LED1
+		map(0x04400007, 0x04400007); // 8xx nothing, 18xx LED1
 
 		// Interprocessor communication interrupt control
 		map(0x04800000, 0x04800000).lw8([this] (uint8_t data) { iop_irq_w<CPU>(1); }, "INT_IOP");
@@ -771,6 +856,36 @@ namespace
 				[this] (offs_t offset, uint32_t data, uint32_t mem_mask) {
 					m_mmu->hyperbus_w(offset, data, mem_mask, m_cpu->supervisor_mode());
 				}, "hyperbus_w");
+	}
+
+	void news_iop_030_state::cpu_map(address_map &map)
+	{
+		hyperbus_map(map);
+
+		// CPU Control Registers
+		map(0x04400000, 0x04400000).lw8([this](uint8_t data)
+								{
+									// TODO: split into function
+									LOG("CPU ROMDIS 0x%x mask = 0x%x\n", data, m_ram->mask());
+									m_cpu_romdis = data > 0;
+									if (data)
+									{
+										m_cpu->space(0).install_ram(0x0, m_ram->mask(), 0x0, m_ram->pointer());
+									}
+									machine().debug_break();
+								}, "ROMDIS"); // TODO: how to handle re-enable?
+		map(0x04400001, 0x04400001).lw8([this](uint8_t data)
+						{
+							LOG("CPU Control offset 0x1 = 0x%x\n", data);
+						}, "RSVD");
+		map(0x04400005, 0x04400005).lw8([this](uint8_t data)
+								{
+									LOG("LED2 0x%x\n", data);
+								}, "LED2");
+		map(0x04400007, 0x04400007).lw8([this](uint8_t data)
+										{
+											LOG("LED1 0x%x\n", data);
+										}, "LED1");
 	}
 
 	template <news_iop_base_state::iop_irq_number Number>
@@ -911,7 +1026,7 @@ namespace
 		device.option_add("tape", NSCSI_TAPE);
 	}
 
-	void news_iop_base_state::handle_rts(int data)
+	void news_iop_020_state::handle_rts(int data)
 	{
 		if (m_panel_shift != !data)
 		{
@@ -927,7 +1042,7 @@ namespace
 		update_dcd();
 	}
 
-	void news_iop_base_state::handle_dtr(int data)
+	void news_iop_020_state::handle_dtr(int data)
 	{
 		if (m_panel_clear != data)
 		{
@@ -942,7 +1057,7 @@ namespace
 		update_dcd();
 	}
 
-	void news_iop_base_state::update_dcd()
+	void news_iop_020_state::update_dcd()
 	{
 		// the shift pin and the counter drive a multiplexer (the shift pin also drives the counter)
 		uint8_t multiplexer_value = (m_panel_shift_count & 0x3) << 1;
@@ -1051,103 +1166,6 @@ namespace
 		}
 	}
 
-	void news_iop_base_state::common(machine_config &config)
-	{
-		RAM(config, m_ram);
-		m_ram->set_default_size("8M");
-		m_ram->set_extra_options("16M");
-		m_ram->set_default_value(0);
-
-		// NEC uPD8253 programmable interval timer
-		PIT8253(config, m_interval_timer, 0);
-		constexpr XTAL PIT_INPUT_FREQUENCY = XTAL(2'000'000); // Assume same as 1960 for now
-		m_interval_timer->set_clk<0>(PIT_INPUT_FREQUENCY);
-		m_interval_timer->set_clk<1>(PIT_INPUT_FREQUENCY);
-		m_interval_timer->set_clk<2>(PIT_INPUT_FREQUENCY);
-		m_interval_timer->out_handler<0>().set(FUNC(news_iop_base_state::interval_timer_tick));
-
-		// 2x Sharp LH8530A Z8530A-SCC
-		SCC8530(config, m_scc_external, (16_MHz_XTAL / 4));
-		SCC8530(config, m_scc_peripheral, (16_MHz_XTAL / 4));
-		m_scc_external->out_int_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCC>));
-		m_scc_peripheral->out_int_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCC_PERIPHERAL>));
-
-		// The monitor ROM repurposes the status pins as a serial interface to read the front panel switches and IDROM data
-		m_scc_peripheral->out_dtrb_callback().set(FUNC(news_iop_base_state::handle_dtr));
-		m_scc_peripheral->out_rtsb_callback().set(FUNC(news_iop_base_state::handle_rts));
-
-		// scc channel A
-		RS232_PORT(config, m_serial[0], default_rs232_devices, "terminal");
-		m_serial[0]->cts_handler().set(m_scc_external, FUNC(z80scc_device::ctsa_w));
-		m_serial[0]->dcd_handler().set(m_scc_external, FUNC(z80scc_device::dcda_w));
-		m_serial[0]->rxd_handler().set(m_scc_external, FUNC(z80scc_device::rxa_w));
-		m_scc_external->out_rtsa_callback().set(m_serial[0], FUNC(rs232_port_device::write_rts));
-		m_scc_external->out_txda_callback().set(m_serial[0], FUNC(rs232_port_device::write_txd));
-
-		// scc channel B
-		RS232_PORT(config, m_serial[1], default_rs232_devices, nullptr);
-		m_serial[1]->cts_handler().set(m_scc_external, FUNC(z80scc_device::ctsb_w));
-		m_serial[1]->dcd_handler().set(m_scc_external, FUNC(z80scc_device::dcdb_w));
-		m_serial[1]->rxd_handler().set(m_scc_external, FUNC(z80scc_device::rxb_w));
-		m_scc_external->out_rtsb_callback().set(m_serial[1], FUNC(rs232_port_device::write_rts));
-		m_scc_external->out_txdb_callback().set(m_serial[1], FUNC(rs232_port_device::write_txd));
-
-		// LANCE ethernet controller
-		AM7990(config, m_net, 20_MHz_XTAL);
-		m_net->intr_out().set(FUNC(news_iop_base_state::iop_irq_w<LANCE>)).invert();
-		m_net->dma_in().set([this] (offs_t offset)
-							{ return m_net_ram[(offset >> 1) & 0x1fff]; });
-		m_net->dma_out().set([this] (offs_t offset, u16 data, u16 mem_mask)
-							 { COMBINE_DATA(&m_net_ram[(offset >> 1) & 0x1fff]); });
-
-		// uPD7265 FDC (Compatible with 765A except it should use Sony/ECMA format by default?)
-		UPD765A(config, m_fdc, 4'000'000); // TODO: confirm clock rate
-		m_fdc->intrq_wr_callback().set(FUNC(news_iop_base_state::iop_irq_w<FDCIRQ>));
-		m_fdc->drq_wr_callback().set(FUNC(news_iop_base_state::iop_irq_w<FDCDRQ>));
-		FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
-
-		// SCSI bus and devices
-		// Most NEWS workstations generally follow this convention (when each given item is present):
-		// ID 0-2: Internal hard drive(s)
-		// ID 3: Free
-		// ID 4: Internal MO drive
-		// ID 5: Internal tape drive
-		// ID 6: Internal CD-ROM drive
-		// ID 7: NEWS (the workstation itself, SCSI initiator)
-		// Most Sony tools can be configured to use any ID for anything, but the defaults will generally follow the above
-		// So, even for expansion MO, tape drives, etc. it is usually easiest to use the above IDs for assignment
-		// Early (pre-OS-3) bootloaders are extremely picky about IDNT data and reported capacity; ensure you are using IDNT data and the matching size reported
-		// from an actual CDC drive if dealing with early versions.
-		// Note: Only the NWS-891 came with a CD-ROM as a default option, others required an external CD-ROM drive
-		NSCSI_BUS(config, "scsi");
-		NSCSI_CONNECTOR(config, "scsi:0", news_scsi_devices, "harddisk");
-		NSCSI_CONNECTOR(config, "scsi:1", news_scsi_devices, nullptr);
-		NSCSI_CONNECTOR(config, "scsi:2", news_scsi_devices, nullptr);
-		NSCSI_CONNECTOR(config, "scsi:3", news_scsi_devices, nullptr);
-		NSCSI_CONNECTOR(config, "scsi:4", news_scsi_devices, nullptr);
-		NSCSI_CONNECTOR(config, "scsi:5", news_scsi_devices, nullptr);
-		NSCSI_CONNECTOR(config, "scsi:6", news_scsi_devices, nullptr);
-
-		// AMD Am5380PC SCSI interface
-		NSCSI_CONNECTOR(config, "scsi:7").option_set("am5380", NCR5380).machine_config([this] (device_t *device)
-		{
-			ncr5380_device &adapter = downcast<ncr5380_device &>(*device);
-			adapter.irq_handler().set([this] (int state){ m_scsi_dma->irq_w(state); });
-			adapter.drq_handler().set(*this, FUNC(news_iop_base_state::scsi_drq_handler));
-		});
-
-		// Virtual device for handling SCSI DMA
-		// (workaround for 68k bus access limitations; normally iopboot's BERR handler would deal with SCSI DMA stuff)
-		NEWS_IOP_SCSI_HELPER(config, m_scsi_dma);
-		m_scsi_dma->scsi_read_callback().set(m_scsi, FUNC(ncr53c80_device::read));
-		m_scsi_dma->scsi_write_callback().set(m_scsi, FUNC(ncr53c80_device::write));
-		m_scsi_dma->scsi_dma_read_callback().set(m_scsi, FUNC(ncr53c80_device::dma_r));
-		m_scsi_dma->scsi_dma_write_callback().set(m_scsi, FUNC(ncr53c80_device::dma_w));
-		m_scsi_dma->iop_halt_callback().set_inputline(m_iop, INPUT_LINE_HALT);
-		m_scsi_dma->bus_error_callback().set(FUNC(news_iop_base_state::scsi_bus_error));
-		m_scsi_dma->irq_out_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCSI_IRQ>));
-	}
-
 	void news_iop_base_state::iop_autovector_map(address_map &map)
 	{
 		map(0xfffffff3, 0xfffffff3).lr8(NAME([] ()
@@ -1178,6 +1196,78 @@ namespace
 											 { return m68000_base_device::autovector(7); }));
 	}
 
+	void news_iop_base_state::common(machine_config &config)
+	{
+		RAM(config, m_ram);
+		m_ram->set_default_value(0);
+
+		// NEC uPD8253 programmable interval timer
+		PIT8253(config, m_interval_timer, 0);
+		constexpr XTAL PIT_INPUT_FREQUENCY = XTAL(2'000'000); // Assume 8xx/9xx same as 1960 for now
+		m_interval_timer->set_clk<0>(PIT_INPUT_FREQUENCY); // CPU interval timer
+		m_interval_timer->set_clk<1>(PIT_INPUT_FREQUENCY); // Main memory refresh
+		m_interval_timer->set_clk<2>(PIT_INPUT_FREQUENCY); // 8xx/9xx: Unknown, 18xx/19xx: IOP timeout
+
+		// 2x Sharp LH8530A Z8530A-SCC
+		SCC8530(config, m_scc_external, (16_MHz_XTAL / 4));
+		SCC8530(config, m_scc_peripheral, (16_MHz_XTAL / 4));
+		m_scc_external->out_int_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCC>));
+		m_scc_peripheral->out_int_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCC_PERIPHERAL>));
+
+		// scc channel A
+		RS232_PORT(config, m_serial[0], default_rs232_devices, "terminal");
+		m_serial[0]->cts_handler().set(m_scc_external, FUNC(z80scc_device::ctsa_w));
+		m_serial[0]->dcd_handler().set(m_scc_external, FUNC(z80scc_device::dcda_w));
+		m_serial[0]->rxd_handler().set(m_scc_external, FUNC(z80scc_device::rxa_w));
+		m_scc_external->out_rtsa_callback().set(m_serial[0], FUNC(rs232_port_device::write_rts));
+		m_scc_external->out_txda_callback().set(m_serial[0], FUNC(rs232_port_device::write_txd));
+
+		// scc channel B
+		RS232_PORT(config, m_serial[1], default_rs232_devices, nullptr);
+		m_serial[1]->cts_handler().set(m_scc_external, FUNC(z80scc_device::ctsb_w));
+		m_serial[1]->dcd_handler().set(m_scc_external, FUNC(z80scc_device::dcdb_w));
+		m_serial[1]->rxd_handler().set(m_scc_external, FUNC(z80scc_device::rxb_w));
+		m_scc_external->out_rtsb_callback().set(m_serial[1], FUNC(rs232_port_device::write_rts));
+		m_scc_external->out_txdb_callback().set(m_serial[1], FUNC(rs232_port_device::write_txd));
+
+		// LANCE ethernet controller
+		AM7990(config, m_net, 20_MHz_XTAL);
+		m_net->intr_out().set(FUNC(news_iop_base_state::iop_irq_w<LANCE>)).invert();
+		m_net->dma_in().set([this] (offs_t offset)
+							{ return m_net_ram[(offset >> 1) & 0x1fff]; });
+		m_net->dma_out().set([this] (offs_t offset, u16 data, u16 mem_mask)
+							 { COMBINE_DATA(&m_net_ram[(offset >> 1) & 0x1fff]); });
+
+		// SCSI bus and devices
+		// Most NEWS workstations generally follow this convention (when each given item is present):
+		// ID 0-2: Internal hard drive(s)
+		// ID 3: Free
+		// ID 4: Internal MO drive
+		// ID 5: Internal tape drive
+		// ID 6: Internal CD-ROM drive
+		// ID 7: NEWS (the workstation itself, SCSI initiator)
+		// Most Sony tools can be configured to use any ID for anything, but the defaults will generally follow the above
+		// So, even for expansion MO, tape drives, etc. it is usually easiest to use the above IDs for assignment
+		// Early (pre-OS-3) bootloaders are extremely picky about IDNT data and reported capacity; ensure you are using IDNT data and the matching size reported
+		// from an actual CDC drive if dealing with early versions.
+		// Note: Only the NWS-891 came with a CD-ROM as a default option, others required an external CD-ROM drive
+		NSCSI_BUS(config, "scsi");
+		NSCSI_CONNECTOR(config, "scsi:0", news_scsi_devices, "harddisk");
+		NSCSI_CONNECTOR(config, "scsi:1", news_scsi_devices, nullptr);
+		NSCSI_CONNECTOR(config, "scsi:2", news_scsi_devices, nullptr);
+		NSCSI_CONNECTOR(config, "scsi:3", news_scsi_devices, nullptr);
+		NSCSI_CONNECTOR(config, "scsi:4", news_scsi_devices, nullptr);
+		NSCSI_CONNECTOR(config, "scsi:5", news_scsi_devices, nullptr);
+		NSCSI_CONNECTOR(config, "scsi:6", news_scsi_devices, nullptr);
+
+		// Virtual device for handling SCSI DMA
+		// (workaround for 68k bus access limitations; normally iopboot's BERR handler would deal with SCSI DMA stuff)
+		NEWS_IOP_SCSI_HELPER(config, m_scsi_dma);
+		m_scsi_dma->iop_halt_callback().set_inputline(m_iop, INPUT_LINE_HALT);
+		m_scsi_dma->bus_error_callback().set(FUNC(news_iop_base_state::scsi_bus_error));
+		m_scsi_dma->irq_out_callback().set(FUNC(news_iop_base_state::iop_irq_w<SCSI_IRQ>));
+	}
+
 	void news_iop_020_state::nws831(machine_config &config)
 	{
 		common(config);
@@ -1193,17 +1283,86 @@ namespace
 		m_mmu->set_addrmap(AS_PROGRAM, &news_iop_020_state::mmu_map);
 		m_mmu->set_bus_error_callback(FUNC(news_iop_base_state::cpu_bus_error));
 
+		// Configure RAM options
+		m_ram->set_default_size("8M");
+		m_ram->set_extra_options("16M");
+
+		// Timer configuration
+		m_interval_timer->out_handler<0>().set(FUNC(news_iop_020_state::interval_timer_tick));
+
+		// The 020 monitor ROM repurposes the status pins as a serial interface to read the front panel switches and IDROM data
+		m_scc_peripheral->out_dtrb_callback().set(FUNC(news_iop_020_state::handle_dtr));
+		m_scc_peripheral->out_rtsb_callback().set(FUNC(news_iop_020_state::handle_rts));
+
 		// Epson RTC-58321B
 		MSM58321(config, m_rtc, 32.768_kHz_XTAL);
 		m_rtc->d0_handler().set([this] (int data) { set_rtc_data_bit(0, data); });
 		m_rtc->d1_handler().set([this] (int data) { set_rtc_data_bit(1, data); });
 		m_rtc->d2_handler().set([this] (int data) { set_rtc_data_bit(2, data); });
 		m_rtc->d3_handler().set([this] (int data) { set_rtc_data_bit(3, data); });
+
+		// uPD7265 FDC (Compatible with 765A except it should use Sony/ECMA format by default?)
+		UPD765A(config, m_fdc, 4'000'000); // TODO: confirm clock rate
+		m_fdc->intrq_wr_callback().set(FUNC(news_iop_base_state::iop_irq_w<FDCIRQ>));
+		m_fdc->drq_wr_callback().set(FUNC(news_iop_base_state::iop_irq_w<FDCDRQ>));
+		FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
+
+		// 8xx/9xx specific SCSI details
+		// AMD Am5380PC SCSI interface
+		NSCSI_CONNECTOR(config, "scsi:7").option_set("am5380", NCR5380).machine_config([this] (device_t *device)
+		{
+			auto &adapter = downcast<ncr5380_device &>(*device);
+			adapter.irq_handler().set([this] (int state){ m_scsi_dma->irq_w(state); });
+			adapter.drq_handler().set(*this, FUNC(news_iop_base_state::scsi_drq_handler));
+		});
+		m_scsi_dma->scsi_read_callback().set(m_scsi, FUNC(ncr53c80_device::read));
+		m_scsi_dma->scsi_write_callback().set(m_scsi, FUNC(ncr53c80_device::write));
+		m_scsi_dma->scsi_dma_read_callback().set(m_scsi, FUNC(ncr53c80_device::dma_r));
+		m_scsi_dma->scsi_dma_write_callback().set(m_scsi, FUNC(ncr53c80_device::dma_w));
 	}
 
     void news_iop_030_state::nws1850(machine_config &config)
     {
         common(config);
+
+		M68030(config, m_iop, 25_MHz_XTAL); // TODO: probably divided somehow
+		m_iop->set_addrmap(AS_PROGRAM, &news_iop_030_state::iop_map);
+		m_iop->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_iop_030_state::iop_autovector_map);
+
+		M68030(config, m_cpu, 25_MHz_XTAL);
+		m_cpu->set_addrmap(AS_PROGRAM, &news_iop_030_state::cpu_map);
+
+		// Configure RAM options
+		m_ram->set_default_size("16M");
+		m_ram->set_extra_options("32M"); // supports up to 32MBytes - what is the increment of increase? TODO: is this accurate?
+
+		// Timer configuration
+		m_interval_timer->out_handler<0>().set(FUNC(news_iop_base_state::cpu_irq_w<TIMER>));
+		m_interval_timer->out_handler<2>().set(FUNC(news_iop_base_state::iop_irq_w<TIMEOUT>));
+
+		// HD63265 FDC (66 used for now, similar but not the same)
+		HD63266F(config, m_fdc, 4'000'000); // TODO: clock rate, 65 differences?
+		m_fdc->intrq_wr_callback().set(FUNC(news_iop_030_state::iop_irq_w<FDCIRQ>));
+		m_fdc->drq_wr_callback().set(FUNC(news_iop_030_state::iop_irq_w<FDCDRQ>));
+		FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
+
+		// 18xx/19xx-specific SCSI details
+		// WD 33c93 SCSI controller
+		NSCSI_CONNECTOR(config, "scsi:7").option_set("wd33c93", WD33C93).machine_config([this](device_t *device)
+		{
+			auto &adapter(downcast<wd33c9x_base_device &>(*device));
+			// TODO: "proper" SCSI DMA support
+			adapter.irq_cb().set(*this, FUNC(news_iop_030_state::iop_irq_w<SCSI_IRQ>));
+			adapter.drq_cb().set(*this, FUNC(news_iop_030_state::iop_irq_w<SCSI_DRQ>));
+		});
+		// TODO: "proper" SCSI DMA support
+		// m_scsi_dma->scsi_read_callback().set(m_scsi, FUNC(ncr53c80_device::read));
+		// m_scsi_dma->scsi_write_callback().set(m_scsi, FUNC(ncr53c80_device::write));
+		// m_scsi_dma->scsi_dma_read_callback().set(m_scsi, FUNC(ncr53c80_device::dma_r));
+		// m_scsi_dma->scsi_dma_write_callback().set(m_scsi, FUNC(ncr53c80_device::dma_w));
+
+		// Epson RTC-62421B
+		RTC62421(config, m_rtc, 32.768_kHz_XTAL);
     }
 
 	static INPUT_PORTS_START(nws8xx)
@@ -1249,7 +1408,9 @@ namespace
         ROM_SYSTEM_BIOS(0, "nws1850", "SONY NET WORK STATION MC68030 Monitor Release 1.2")
         // TODO: use non-combined ones
         ROMX_LOAD("NWS-1800.combined", 0x00000, 0x10000, CRC(c5959e3c) SHA1(a2561be4c60f788c378f544937e46bee2f77b728), ROM_BIOS(0))
-    ROM_END
+
+		ROM_REGION32_BE(0x100, "idrom", 0)
+	ROM_END
 
 } // anonymous namespace
 
