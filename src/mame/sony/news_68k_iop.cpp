@@ -237,7 +237,6 @@ namespace
 		void scsi_drq_handler(int status);
 
 		// Platform hardware used by the main processor
-		// TODO: move this to 1850 void cpu_romdis_w(uint8_t data);
 		uint8_t berr_status_r();
 		void astreset_w(uint8_t data);
 		void astset_w(uint8_t data);
@@ -298,6 +297,8 @@ namespace
         void nws831(machine_config &config) ATTR_COLD;
 
     protected:
+    	void machine_start() override ATTR_COLD;
+
     	void cpu_map(address_map &map) ATTR_COLD;
     	void mmu_map(address_map &map) ATTR_COLD;
     	void iop_map(address_map &map) ATTR_COLD;
@@ -349,9 +350,12 @@ namespace
         void nws1850(machine_config &config) ATTR_COLD;
 
     protected:
+    	void machine_start() override ATTR_COLD;
     	void install_ram() override;
     	void cpu_map(address_map &map) ATTR_COLD;
     	void iop_map(address_map &map) ATTR_COLD;
+
+    	void cpu_romdis_w(uint8_t data);
 
     	// 18xx/19xx-specific devices
     	required_device<rtc62421_device> m_rtc;
@@ -378,13 +382,24 @@ namespace
 		save_item(NAME(m_cpu_bus_error));
 		save_item(NAME(m_last_berr_pc_cpu));
 		save_item(NAME(m_cpu_bus_error_status));
+	}
 
-		// TODO: move these to 020 class
-		// save_item(NAME(m_panel_clear));
-		// save_item(NAME(m_panel_shift));
-		// save_item(NAME(m_sw1_first_read));
-		// save_item(NAME(m_panel_shift_count));
-		// save_item(NAME(m_rtc_data));
+	void news_iop_020_state::machine_start()
+	{
+		news_iop_base_state::machine_start();
+
+		save_item(NAME(m_panel_clear));
+		save_item(NAME(m_panel_shift));
+		save_item(NAME(m_sw1_first_read));
+		save_item(NAME(m_panel_shift_count));
+		save_item(NAME(m_rtc_data));
+	}
+
+	void news_iop_030_state::machine_start()
+	{
+		news_iop_base_state::machine_start();
+
+		save_item(NAME(m_cpu_romdis));
 	}
 
 	void news_iop_020_state::interval_timer_tick(uint8_t data)
@@ -670,7 +685,7 @@ namespace
 		map(0x46000002, 0x46000002).w(FUNC(news_iop_020_state::rtcsel_w));
 
 		// SCSI registers
-		map(0x4e000000, 0x4e000007).r(m_scsi, FUNC(ncr5380_device::read));
+		map(0x4e000000, 0x4e000007).r(m_scsi, FUNC(ncr5380_device::read)); // TODO: ??? remove?
 		map(0x4e000000, 0x4e000007).lrw8(NAME([this] (offs_t offset) {
 			return m_scsi_dma->read_wrapper(false, offset);
 		}), NAME([this] (offs_t offset, uint8_t data) {
@@ -681,43 +696,57 @@ namespace
 		map(0x80000000, 0x8001ffff).ram();
 	}
 
-	// TODO: dump actual IDROM from the front panel
-	uint8_t idrom_data[] = {
-		0x0, 0x9, // Model: NWS-1850
-		0x4, 0x2, // Serial
-		0x4, 0x2,
-		0x0, 0x1, // Lot ID
-		0x0, 0x0, // Reserved
-		0x0, 0x0,
-		0x0, 0x0, // chksum0
-		0x0, 0x0,
-		0x3, 0x3, // MAC
-		0xb, 0x0,
-		0x8, 0xa,
-		0x9, 0x4,
-		0x4, 0xa,
-		0x3, 0x6,
-		0x0, 0x0, // chksum1
-		0x0, 0x0
-	};
-
 	void news_iop_030_state::iop_map(address_map &map)
 	{
 		iop_map_common(map);
 
 		// 18xx/19xx-specific IOP Control Registers
-		// 0x8 CACHEEN (1 = Enable external cache, 0 =  disable and flush external cache)
+		map(0x40000008, 0x40000008).lw8([this] (uint8_t data)
+		{
+			LOG("(%s) IOP cache %s\n", machine().describe_context(),
+				data > 0 ? "enabled" : "disabled");
+		}, "CACHEEN");
 		map(0x40000009, 0x40000009).lw8([this](uint8_t data)
-								{
-									LOG("Write SCSIRST = 0x%x\n", data);
-									m_scsi->reset_w(data);
-								}, "SCSIRST");
-		// 0xA FDCRST (1 = assert FDC ~RESET)
-		// 0xB VMEINTEN (1 = allow VME interrupts to IOP)
-		// 0xC FDCFMT (1 = IBM format, 0 = ECMA format)
-		// 0xD PELATCHEN (Main memory parity check)
-		// 0xE LED4 (1 = on)
-		// 0xF LED3 (1 = on)
+		{
+			LOG("Write SCSIRST = 0x%x\n", data);
+			m_scsi->reset_w(data);
+		}, "SCSIRST");
+		map(0x4000000a, 0x4000000a).lw8([this] (uint8_t data)
+		{
+			LOG("(%s) FDC reset %s\n", machine().describe_context(),
+				data > 0 ? "asserted" : "cleared");
+			// TODO: implement
+		}, "FDCRESET");
+		map(0x4000000b, 0x4000000b).lw8([this] (uint8_t data)
+		{
+			LOG("(%s) IOP VME interrupts %s\n", machine().describe_context(),
+				data > 0 ? "enabled" : "disabled");
+			// TODO: implement
+		}, "VMEINTEN");
+		map(0x4000000c, 0x4000000c).lw8([this] (uint8_t data)
+		{
+			LOG("(%s) FDC format set to %s\n", machine().describe_context(),
+				data > 0 ? "IBM" : "ECMA");
+			// TODO: implement
+		}, "FDCFMT");
+		map(0x4000000d, 0x4000000d).lw8([this] (uint8_t data)
+		{
+			LOG("(%s) IOP main memory parity check %s\n", machine().describe_context(),
+				data > 0 ? "enabled" : "disabled");
+			// TODO: implement
+		}, "PARITYEN");
+		map(0x4000000e, 0x4000000e).lw8([this] (uint8_t data)
+		{
+			LOG("(%s) LED4 %s\n", machine().describe_context(),
+				data > 0 ? "on" : "off");
+			// TODO: implement
+		}, "LED4");
+		map(0x4000000e, 0x4000000e).lw8([this] (uint8_t data)
+		{
+			LOG("(%s) LED3 %s\n", machine().describe_context(),
+				data > 0 ? "on" : "off");
+			// TODO: implement
+		}, "LED3");
 
 		// RTC registers
 		map(0x46000000, 0x4600000f).rw(m_rtc, FUNC(rtc62421_device::read), FUNC(rtc62421_device::write));
@@ -728,10 +757,8 @@ namespace
 		map(0x64000000, 0x64000000).rw(m_scsi, FUNC(wd33c93_device::dma_r), FUNC(wd33c93_device::dma_w)); // TODO: temporary until wrapper is fixed
 
 		// Platform hardware
-		map(0x6e000000, 0x6e0000ff).lr8([this](offs_t offset) {
-			LOG("Read FRONT_ROM[0x%x] = 0x%x\n", offset, idrom_data[offset]);
-			return idrom_data[offset]; // TODO: bounds check
-		}, "FRONT_ROM");
+		// TODO: IDROM does not necessarily have all the data it should, need dump from real front panel ROM
+		map(0x6e000000, 0x6e00001f).rom().region("idrom", 0);
 		map(0x6e000100, 0x6e000100).lr8([this] {
 			LOG("Read DIPSW = 0x%x\n", m_dip_switch->read());
 			return m_dip_switch->read();
@@ -749,6 +776,22 @@ namespace
 	void news_iop_030_state::install_ram()
 	{
 		m_cpu->space(0).install_ram(0x0, m_ram->mask(), m_ram->pointer());
+	}
+
+	void news_iop_030_state::cpu_romdis_w(uint8_t data)
+	{
+		LOG("(%s) CPU ROMDIS 0x%x\n", machine().describe_context(), data);
+		m_cpu_romdis = data > 0;
+		if (data)
+		{
+			m_cpu->space(0).install_ram(0x0, m_ram->mask(), 0x0, m_ram->pointer());
+		}
+		else
+		{
+			// TODO: adjust EPROM offset for CPU
+			m_cpu->space(0).install_rom(0x00000000, 0x0000ffff, m_eprom);
+		}
+		machine().debug_break();
 	}
 
 	void news_iop_020_state::mmu_romdis_w(uint8_t data)
@@ -797,7 +840,7 @@ namespace
 		map(0x03900000, 0x039fffff).rw(FUNC(news_iop_base_state::vme_bus_error_r), FUNC(news_iop_base_state::vme_bus_error_w)); // TODO: full region start/end
 
 		// CPU Control Registers
-		map(0x04400000, 0x04400000); // ROMDIS TODO: 18xx version
+		map(0x04400000, 0x04400000); // CPU ROMDIS
 		map(0x04400001, 0x04400001); // 8xx MMUEN, 18xx nothing
 		map(0x04400002, 0x04400002).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ3>));
 		map(0x04400003, 0x04400003).w(FUNC(news_iop_base_state::cpu_inten_w<IOPIRQ5>));
@@ -854,17 +897,7 @@ namespace
 		hyperbus_map(map);
 
 		// CPU Control Registers
-		map(0x04400000, 0x04400000).lw8([this](uint8_t data)
-								{
-									// TODO: split into function
-									LOG("CPU ROMDIS 0x%x mask = 0x%x\n", data, m_ram->mask());
-									m_cpu_romdis = data > 0;
-									if (data)
-									{
-										m_cpu->space(0).install_ram(0x0, m_ram->mask(), 0x0, m_ram->pointer());
-									}
-									machine().debug_break();
-								}, "ROMDIS"); // TODO: how to handle re-enable?
+		map(0x04400000, 0x04400000).w(FUNC(news_iop_030_state::cpu_romdis_w));
 		map(0x04400001, 0x04400001).lw8([this](uint8_t data)
 						{
 							LOG("CPU Control offset 0x1 = 0x%x\n", data);
@@ -1159,15 +1192,15 @@ namespace
 
 	void news_iop_base_state::iop_autovector_map(address_map &map)
 	{
-		map(0xfffffff3, 0xfffffff3).lr8(NAME([] ()
+		map(0xfffffff3, 0xfffffff3).lr8(NAME([]
 											 { return m68000_base_device::autovector(1); }));
-		map(0xfffffff5, 0xfffffff5).lr8(NAME([] ()
+		map(0xfffffff5, 0xfffffff5).lr8(NAME([]
 											 { return m68000_base_device::autovector(2); }));
-		map(0xfffffff7, 0xfffffff7).lr8(NAME([] ()
+		map(0xfffffff7, 0xfffffff7).lr8(NAME([]
 											 { return m68000_base_device::autovector(3); }));
-		map(0xfffffff9, 0xfffffff9).lr8(NAME([] ()
+		map(0xfffffff9, 0xfffffff9).lr8(NAME([]
 											 { return m68000_base_device::autovector(4); }));
-		map(0xfffffffb, 0xfffffffb).lr8(NAME([this] ()
+		map(0xfffffffb, 0xfffffffb).lr8(NAME([this]
 											 {
 												uint8_t vector = m68000_base_device::autovector(5);
 												// TODO: serial port vs peripheral SCC vector priority?
@@ -1181,9 +1214,9 @@ namespace
 												}
 												return vector;
 											 }));
-		map(0xfffffffd, 0xfffffffd).lr8(NAME([] ()
+		map(0xfffffffd, 0xfffffffd).lr8(NAME([]
 											 { return m68000_base_device::autovector(6); }));
-		map(0xffffffff, 0xffffffff).lr8(NAME([] ()
+		map(0xffffffff, 0xffffffff).lr8(NAME([]
 											 { return m68000_base_device::autovector(7); }));
 	}
 
@@ -1316,11 +1349,11 @@ namespace
     {
         common(config);
 
-		M68030(config, m_iop, 25_MHz_XTAL); // TODO: probably divided somehow
+		M68030(config, m_iop, 50_MHz_XTAL / 2); // TODO: double-check on schematic
 		m_iop->set_addrmap(AS_PROGRAM, &news_iop_030_state::iop_map);
 		m_iop->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_iop_030_state::iop_autovector_map);
 
-		M68030(config, m_cpu, 25_MHz_XTAL);
+		M68030(config, m_cpu, 50_MHz_XTAL / 2);
 		m_cpu->set_addrmap(AS_PROGRAM, &news_iop_030_state::cpu_map);
 
 		// Configure RAM options
@@ -1357,7 +1390,7 @@ namespace
 		RTC62421(config, m_rtc, 32.768_kHz_XTAL);
     }
 
-	static INPUT_PORTS_START(nws8xx)
+	static INPUT_PORTS_START(nws_iop)
 		PORT_START("FRONT_PANEL")
 			PORT_DIPNAME(0x07, 0x07, "Display")
 				PORT_DIPLOCATION("FRONT_PANEL:1,2,3")
@@ -1396,17 +1429,21 @@ namespace
 	ROM_END
 
     ROM_START(nws1850)
-        ROM_REGION32_BE(0x10000, "eprom", 0)
-        ROM_SYSTEM_BIOS(0, "nws1850", "SONY NET WORK STATION MC68030 Monitor Release 1.2")
-        // TODO: use non-combined ones
-        ROMX_LOAD("NWS-1800.combined", 0x00000, 0x10000, CRC(c5959e3c) SHA1(a2561be4c60f788c378f544937e46bee2f77b728), ROM_BIOS(0))
+		// 2x Fujitsu MBM27C256A-25 EPROMs
+		ROM_REGION32_BE(0x10000, "eprom", 0)
+		ROM_SYSTEM_BIOS(0, "nws1850", "SONY NET WORK STATION MC68030 Monitor Release 1.2")
+		ROM_LOAD16_BYTE("nws-1800h.mbm27c256a.bin", 0x0000, 0x8000, CRC(84914fe7) SHA1(93b7694bb10f1b50b41ea0019352951ccc8326aa))
+		ROM_LOAD16_BYTE("nws-1800l.mbm27c256a.bin", 0x0001, 0x8000, CRC(ee96ab22) SHA1(f37858dc21d1083b75dc7008ac4595f3859a63b0))
 
-		ROM_REGION32_BE(0x100, "idrom", 0)
+		// TODO: replace contents with dumped IDROM
+		//       this is a synthesized IDROM, there is currently no dump of an 1850's actual IDROM (front panel ROM)
+		ROM_REGION32_BE(0x20, "idrom", 0)
+		ROM_LOAD("idrom.bin", 0x0, 0x20, CRC(3223f004) SHA1(cac7aaca75c94c7ed6965ace929cb8b02b26e269) BAD_DUMP)
 	ROM_END
 
 } // anonymous namespace
 
 // Machine definitions
-//   YEAR  NAME     P  C  MACHINE  INPUT   CLASS               INIT         COMPANY FULLNAME    FLAGS
-COMP(1987, nws831,  0, 0, nws831,  nws8xx, news_iop_020_state, init_common, "Sony", "NWS-831",  MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
-COMP(1989, nws1850, 0, 0, nws1850, nws8xx, news_iop_030_state, init_common, "Sony", "NWS-1850", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
+//   YEAR  NAME     P  C  MACHINE  INPUT    CLASS               INIT         COMPANY FULLNAME    FLAGS
+COMP(1987, nws831,  0, 0, nws831,  nws_iop, news_iop_020_state, init_common, "Sony", "NWS-831",  MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
+COMP(1989, nws1850, 0, 0, nws1850, nws_iop, news_iop_030_state, init_common, "Sony", "NWS-1850", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
