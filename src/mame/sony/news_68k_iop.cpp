@@ -282,7 +282,7 @@ namespace
 		emu_timer *m_cpu_bus_error_timer;
 
 		// Other constants
-		static constexpr int NET_RAM_SIZE = 8192; // 16K RAM, in 16-bit words TODO: is the the same between 8xx/18xx?
+		static constexpr int NET_RAM_SIZE = 8192; // 16K RAM, in 16-bit words
 	};
 
     class news_iop_020_state : public news_iop_base_state
@@ -1325,7 +1325,7 @@ namespace
 
 		// Configure RAM options
 		m_ram->set_default_size("16M");
-		m_ram->set_extra_options("32M"); // supports up to 32MBytes - what is the increment of increase? TODO: is this accurate?
+		m_ram->set_extra_options("32M");
 
 		// Timer configuration
 		m_interval_timer->out_handler<0>().set(FUNC(news_iop_030_state::cpu_irq_w<TIMER>));
@@ -1338,6 +1338,7 @@ namespace
 		FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
 
 		// 18xx/19xx-specific SCSI details
+		// TODO: built-in 125 Mbyte tape drive
 		// WD 33c93 SCSI controller
 		NSCSI_CONNECTOR(config, "scsi:7").option_set("wd33c93", WD33C93).machine_config([this](device_t *device)
 		{
