@@ -709,7 +709,7 @@ namespace
 		map(0x40000009, 0x40000009).lw8([this](uint8_t data)
 		{
 			LOG("Write SCSIRST = 0x%x\n", data);
-			m_scsi->reset_w(data);
+			m_scsi->reset_w(data); // TODO: check this on schematic
 		}, "SCSIRST");
 		map(0x4000000a, 0x4000000a).lw8([this] (uint8_t data)
 		{
@@ -1377,6 +1377,7 @@ namespace
 		{
 			auto &adapter(downcast<wd33c9x_base_device &>(*device));
 			// TODO: "proper" SCSI DMA support
+			adapter.set_clock(10_MHz_XTAL); // TODO: confirm clock in schematic
 			adapter.irq_cb().set(*this, FUNC(news_iop_030_state::iop_irq_w<SCSI_IRQ>));
 			adapter.drq_cb().set(*this, FUNC(news_iop_030_state::iop_irq_w<SCSI_DRQ>));
 		});
