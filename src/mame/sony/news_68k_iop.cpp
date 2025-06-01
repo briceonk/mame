@@ -226,7 +226,7 @@ namespace
 		void vme_bus_error_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
 		// Platform hardware used by the IOP
-		uint8_t iop_status_r();
+		virtual uint8_t iop_status_r() = 0;
 		virtual void iop_romdis_w(uint8_t data);
 		void min_w(uint8_t data);
 		void motoron_w(uint8_t data);
@@ -305,6 +305,7 @@ namespace
     	void install_ram() override;
 
     	void iop_romdis_w(uint8_t data) override;
+    	uint8_t iop_status_r() override;
 
     	// MMU helper functions
     	void mmuen_w(uint8_t data);
@@ -356,6 +357,7 @@ namespace
     	void iop_map(address_map &map) ATTR_COLD;
 
     	void cpu_romdis_w(uint8_t data);
+    	uint8_t iop_status_r() override;
 
     	// 18xx/19xx-specific devices
     	required_device<rtc62421_device> m_rtc;
@@ -421,19 +423,30 @@ namespace
 		m_cpu_bus_error = false;
 	}
 
-	uint8_t news_iop_base_state::iop_status_r()
+	uint8_t news_iop_020_state::iop_status_r()
+	{
+		// Confirmed bits below; other bits might be the same as 18xx/19xx but needs confirmation.
+		// 7: FDC IRQ
+		// 4: SCSI Interrupt Status
+
+		const uint8_t status = (is_iop_irq_set<SCSI_IRQ>() ? 0x10 : 0) | (is_iop_irq_set<FDCIRQ>() ? 0x80 : 0);
+		LOGMASKED(LOG_ALL_INTERRUPT, "Read IOPSTATUS = 0x%x\n", status);
+		return status;
+	}
+
+	uint8_t news_iop_030_state::iop_status_r()
 	{
 		// IOP status bits defined as below for the NWS-18xx/19xx series
 		// 7: FDC IRQ
 		// 6: ~CPIRQ3
 		// 5: Main Memory Parity Error Flag
-		// 4: ~CPIRQ1 (On the NWS-800, this seems to be SCSI interrupt status?)
+		// 4: ~CPIRQ1
 		// 3: DSR CHB
 		// 2: RI CHB
 		// 1: DSR CHA
 		// 0: RI CHA
 
-		const uint8_t status = (is_iop_irq_set<SCSI_IRQ>() ? 0x10 : 0) | (is_iop_irq_set<FDCIRQ>() ? 0x80 : 0);
+		const uint8_t status = is_iop_irq_set<FDCIRQ>() ? 0x80 : 0;
 		LOGMASKED(LOG_ALL_INTERRUPT, "Read IOPSTATUS = 0x%x\n", status);
 		return status;
 	}
