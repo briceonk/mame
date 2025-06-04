@@ -389,6 +389,9 @@ int sound_pulse::init(osd_interface &osd, osd_options const &options)
 	if(m_generation >= 0x80000000)
 		return 1;
 
+	if(options.audio_latency() > 0.0f)
+		osd_printf_verbose("Sound: %s module does not support audio_latency option\n", name());
+
 	return 0;
 }
 
@@ -525,6 +528,13 @@ void sound_pulse::exit()
 
 	pa_context_unref(m_context);
 	pa_threaded_mainloop_free(m_mainloop);
+
+	m_nodes.clear();
+	m_node_osdid_to_id.clear();
+	m_streams.clear();
+	m_stream_pulse_id_to_osdid.clear();
+	m_default_audio_sink = "";
+	m_default_audio_source = "";
 }
 
 #else

@@ -18694,6 +18694,9 @@ touchgonnac
 touchgoun
 wrally2
 wrally2a
+wrally2b
+wrally2c
+wrally2d
 
 @source:gaelco/gaelco3d.cpp
 footbpow
@@ -18702,12 +18705,19 @@ footbpow12
 footbpow14
 radikalb
 radikalba
+radikalbp
 speedup
 speedup10
 speedup12
+speedup20
+speedup20a
+speedup21
 surfplnt
+surfplnt10
+surfplnt12
 surfplnt20
 surfplnt30
+surfplnt31
 surfplnt40
 
 @source:gaelco/gaelcof3.cpp
@@ -18728,8 +18738,15 @@ tuningrc
 glass
 glass10
 glass10a
+glass10b
+glass10c
+glass10d
+glassa
+glassat
 glasskr
+glasskra
 glassp
+ssplash
 
 @source:gaelco/goldart.cpp
 goldart
@@ -18748,6 +18765,7 @@ lotoplay
 lotoplaya
 lotoplayb
 lotoplayc
+lotoplayp
 
 @source:gaelco/mastboy.cpp
 mastboy
@@ -18774,6 +18792,9 @@ mastboyob
 mastboyoc
 mastboyod
 
+@source:gaelco/mastboyo_ms.cpp
+mastboyom
+
 @source:gaelco/radikaldarts.cpp
 radikaldrt
 
@@ -18789,14 +18810,19 @@ roldfrog
 roldfroga
 splash
 splash10
+splash12
+splashkr
+splashna
 ringball
 
 @source:gaelco/splash_ms.cpp
 splashms
 
 @source:gaelco/targeth.cpp
+quickshts
 targeth
 targetha
+targethb
 targeth10
 
 @source:gaelco/thoop2.cpp
@@ -19635,6 +19661,7 @@ uchitari
 vesarif
 vespovar
 vfutbol
+vinnpukh
 
 @source:handheld/hh_smc1k.cpp
 tkkongq
@@ -20642,6 +20669,7 @@ lhzb
 lhzba
 lhzb2
 lhzb2a
+lhzb2b
 mgcs
 mgcsa
 mgcsb
@@ -20717,6 +20745,7 @@ oceanpar101us
 olympic5
 olympic5107us
 qlgs
+royal5p
 sdwx
 slqz3
 tct2p
@@ -20744,6 +20773,7 @@ crzybugs200us
 crzybugs202us
 haunthig
 haunthig101us
+jking04
 tripfev
 tripfev105us
 tripfev107us
@@ -29720,6 +29750,7 @@ cb4
 cb4a
 cb5
 cb5_11
+cb5_13
 crzybell
 dynastye
 mystjb
@@ -35951,6 +35982,9 @@ ob8
 @source:oberheim/xpander.cpp
 xpander
 
+@source:olivetti/celint2k.cpp
+celint2kss
+
 @source:olivetti/m20.cpp
 m20
 m40
@@ -36890,6 +36924,9 @@ ms4144
 so30h
 so4saw2
 zito4dps
+
+@source:pc/play4texash.cpp
+play4texash
 
 @source:pc/poisk1.cpp
 poisk1
@@ -41450,6 +41487,7 @@ stactics
 astrass
 bakubaku
 batmanfr
+chalgolf
 choroqhr
 colmns97
 cotton2
@@ -42879,6 +42917,9 @@ ckz80
 dmndhrt
 dmndhrtn
 honeybee
+
+@source:skeleton/clownmgc.cpp
+clownmgc
 
 @source:skeleton/clxvme186.cpp
 clxvme186
@@ -46464,8 +46505,10 @@ gameu90
 gameu108
 gormiti
 imgame
+jak_bj
 jak_prr
 jak_spmm
+jak_tpir
 myac220
 smartfp
 smartfpf
@@ -46476,6 +46519,7 @@ tkmag220
 paccon
 lazertag
 jak_s500
+jak_sinv
 jak_smwm
 jak_pf
 jak_prft
@@ -46564,6 +46608,8 @@ jak_diso
 jak_sbdd
 jak_spdmo
 jak_spdmoa
+jak_thom
+jak_thomp
 jak_wpt
 sstarkar
 
@@ -46653,13 +46699,22 @@ icanguit
 icanpian
 
 @source:tvgames/spg2xx_jakks.cpp
+jak_1vs
+jak_5thg
+jak_avtr
 jak_batm
 jak_cind
 jak_ctah
+jak_dond
 jak_dpma
 jak_dwa
+jak_dwmn
+jak_dwmno
 jak_gdg
+jak_hm1m
+jak_hmbb
 jak_hsm
+jak_jpdy
 jak_marv
 jak_mk
 jak_mpaco
@@ -46680,6 +46735,9 @@ jak_spd3
 jak_spdv
 jak_supm
 jak_wall
+jak_wof2
+jak_xmen
+jak_xmenp
 
 @source:tvgames/spg2xx_jakks_gkr.cpp
 jak_capc
@@ -46691,8 +46749,6 @@ jak_dora
 jak_dorr
 jak_dpr
 jak_dprs
-jak_dwmn
-jak_dwmno
 jak_fan4
 jak_just
 jak_mpac
@@ -46706,7 +46762,6 @@ jak_spdm
 jak_swot
 jak_wof
 jak_wwe
-jak_xmenp
 
 @source:tvgames/spg2xx_jakks_sharp.cpp
 jsc_dora
