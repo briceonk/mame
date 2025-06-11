@@ -107,7 +107,7 @@
 #define LOG_AST (1U << 9)
 #define LOG_RTC (1U << 10)
 
-#define VERBOSE (LOG_GENERAL)
+#define VERBOSE (LOG_GENERAL|LOG_SCSI|LOG_INTERRUPT)
 #include "logmacro.h"
 
 #include <map>
@@ -674,7 +674,7 @@ namespace
 
 		// SCSI pseudo-DMA port
 		// TODO: this might need to be a virtual function
-		map(0x64000000, 0x64000003).rw(FUNC(news_iop_base_state::scsi_dma_r), FUNC(news_iop_base_state::scsi_dma_w));
+		// map(0x64000000, 0x64000003).rw(FUNC(news_iop_base_state::scsi_dma_r), FUNC(news_iop_base_state::scsi_dma_w));
 
 		// Ethernet buffer memory
 		// TODO: is mem_mask needed on read?
@@ -1390,7 +1390,7 @@ namespace
 		{
 			auto &adapter(downcast<wd33c9x_base_device &>(*device));
 			// TODO: "proper" SCSI DMA support
-			adapter.set_clock(10_MHz_XTAL); // TODO: confirm clock in schematic
+			adapter.set_clock(8_MHz_XTAL); // TODO: confirm clock in schematic
 			adapter.irq_cb().set(*this, FUNC(news_iop_030_state::iop_irq_w<SCSI_IRQ>));
 			adapter.drq_cb().set(*this, FUNC(news_iop_030_state::iop_irq_w<SCSI_DRQ>));
 		});

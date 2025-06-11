@@ -29,7 +29,7 @@
 #define LOG_REGS        (LOG_READS | LOG_WRITES)
 #define LOG_ALL         (LOG_REGS | LOG_COMMANDS | LOG_ERRORS | LOG_MISC | LOG_LINES | LOG_STATE | LOG_STEP)
 
-#define VERBOSE         (0)
+#define VERBOSE         (LOG_ALL)
 #include "logmacro.h"
 
 enum register_addresses_e : uint8_t {
@@ -539,7 +539,7 @@ void wd33c9x_base_device::indir_w(offs_t offset, uint8_t data)
 uint8_t wd33c9x_base_device::indir_addr_r()
 {
 	// Trick to push the interrupt flag after the fifo is empty to help cps3
-	return m_regs[AUXILIARY_STATUS] & 0x01 ? m_regs[AUXILIARY_STATUS] & 0x7f : m_regs[AUXILIARY_STATUS];
+	return m_regs[AUXILIARY_STATUS]; //& 0x01 ? m_regs[AUXILIARY_STATUS] & 0x7f : m_regs[AUXILIARY_STATUS];
 }
 
 
@@ -611,6 +611,7 @@ uint8_t wd33c9x_base_device::indir_reg_r()
 
 void wd33c9x_base_device::indir_reg_w(uint8_t data)
 {
+	logerror("indir_reg_w: 0x%x -> 0x%x\n", m_addr, data);
 	switch (m_addr) {
 	case SCSI_STATUS:
 	case QUEUE_TAG: // Only for 92/93 and 93A
@@ -840,7 +841,7 @@ void wd33c9x_base_device::start_command()
 		break;
 
 	case COMMAND_CC_TRANSFER_INFO:
-		LOGMASKED(LOG_COMMANDS, "Transfer Info Command\n");
+		LOGMASKED(LOG_COMMANDS, "Transfer Info Command (%s)\n", machine().describe_context());
 		if (m_mode != MODE_I) {
 			fatalerror("%s: TRANSFER_INFO command only valid in the Initiator state.", shortname());
 		}
@@ -1183,6 +1184,7 @@ void wd33c9x_base_device::step(bool timeout)
 
 	case INIT_XFR:
 		if (ctrl & S_REQ) {
+			logerror("XFR phase = 0x%x\n", m_xfr_phase);
 			switch (m_xfr_phase) {
 			case S_PHASE_DATA_OUT:
 				if ((m_regs[CONTROL] & CONTROL_DM) != CONTROL_DM_POLLED) {
@@ -1237,6 +1239,7 @@ void wd33c9x_base_device::step(bool timeout)
 			case S_PHASE_DATA_IN:
 			case S_PHASE_STATUS:
 			case S_PHASE_MSG_IN:
+				logerror("Is data fifo full? = %s, DRQ state = %s\n", data_fifo_full() ? "yes" : "no", m_drq_state ? "asserted" : "clear");
 				if (!data_fifo_full()) {
 					// if it's the last message byte, ACK remains asserted, terminate with function_complete()
 					//state = (m_xfr_phase == S_PHASE_MSG_IN && (!dma_command || tcounter == 1)) ? INIT_XFR_RECV_BYTE_NACK : INIT_XFR_RECV_BYTE_ACK;
@@ -1472,6 +1475,7 @@ uint8_t wd33c9x_base_device::data_fifo_pop()
 	--m_data_fifo_size;
 	uint8_t ret = m_data_fifo[m_data_fifo_pos];
 	m_data_fifo_pos = (m_data_fifo_pos + 1) % DATA_FIFO_SIZE;
+	logerror("data_fifo_pop: popped value = 0x%x, new pos = 0x%x, new size = 0x%x\n", ret, m_data_fifo_pos, m_data_fifo_size);
 	return ret;
 }
 
@@ -1487,6 +1491,7 @@ void wd33c9x_base_device::data_fifo_push(const uint8_t data)
 	}
 	m_data_fifo[(m_data_fifo_pos + m_data_fifo_size) % DATA_FIFO_SIZE] = data;
 	++m_data_fifo_size;
+	logerror("data_fifo_push: pushed value = 0x%x, new pos = 0x%x, new size = 0x%x\n", data, m_data_fifo_pos, m_data_fifo_size);
 }
 
 
@@ -1580,6 +1585,7 @@ uint8_t wd33c9x_base_device::irq_fifo_pop()
 
 void wd33c9x_base_device::irq_fifo_push(const uint8_t status)
 {
+	logerror("Pushing SCSI IRQ status 0x%x\n", status);
 	if (irq_fifo_full()) {
 		fatalerror("%s: IRQ FIFO overflow.\n", shortname());
 	}
