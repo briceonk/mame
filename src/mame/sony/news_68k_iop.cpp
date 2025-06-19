@@ -136,6 +136,7 @@ namespace
 			m_scc_peripheral(*this, "scc_peripheral"),
 			m_net(*this, "net"),
 			m_fdc(*this, "fdc"),
+			m_scsi_bus(*this, "scsi"),
 			m_scsi_dma(*this, "scsi_dma"),
 			m_dip_switch(*this, "FRONT_PANEL"),
 			m_serial(*this, "serial%u", 0U),
@@ -259,6 +260,7 @@ namespace
 		required_device<scc8530_device> m_scc_peripheral;
 		required_device<am7990_device> m_net;
 		required_device<upd765_family_device> m_fdc;
+		required_device<nscsi_bus_device> m_scsi_bus;
 		required_device<news_iop_scsi_helper_device> m_scsi_dma;
 		required_ioport m_dip_switch;
 		required_device_array<rs232_port_device, 2> m_serial;
@@ -669,12 +671,11 @@ namespace
 		map(0x4c000100, 0x4c0001ff).noprw();
 
 		// IOP status register
-		// TODO: make this function abstract b/c impl is different between 020/030 IOPs
 		map(0x60000000, 0x60000000).r(FUNC(news_iop_base_state::iop_status_r));
 
 		// SCSI pseudo-DMA port
 		// TODO: this might need to be a virtual function
-		// map(0x64000000, 0x64000003).rw(FUNC(news_iop_base_state::scsi_dma_r), FUNC(news_iop_base_state::scsi_dma_w));
+		map(0x64000000, 0x64000003).rw(FUNC(news_iop_base_state::scsi_dma_r), FUNC(news_iop_base_state::scsi_dma_w));
 
 		// Ethernet buffer memory
 		// TODO: is mem_mask needed on read?
@@ -714,47 +715,53 @@ namespace
 		iop_map_common(map);
 
 		// 18xx/19xx-specific IOP Control Registers
-		map(0x40000008, 0x40000008).lw8([this] (uint8_t data)
+		map(0x40000008, 0x40000008).lw8([this] (const uint8_t data)
 		{
 			LOG("(%s) IOP cache %s\n", machine().describe_context(),
 				data > 0 ? "enabled" : "disabled");
 		}, "CACHEEN");
-		map(0x40000009, 0x40000009).lw8([this](uint8_t data)
+		map(0x40000009, 0x40000009).lw8([this](const uint8_t data)
 		{
 			LOG("Write SCSIRST = 0x%x\n", data);
-			m_scsi->reset_w(data); // TODO: check this on schematic
+			m_scsi_bus->ctrl_w(
+				0,
+				data > 0 ? nscsi_device::S_RST : 0,
+				nscsi_device::S_RST
+			);
 		}, "SCSIRST");
-		map(0x4000000a, 0x4000000a).lw8([this] (uint8_t data)
+		map(0x4000000a, 0x4000000a).lw8([this] (const uint8_t data)
 		{
 			LOG("(%s) FDC reset %s\n", machine().describe_context(),
 				data > 0 ? "asserted" : "cleared");
-			// TODO: implement
+			if (data) {
+				m_fdc->soft_reset();
+			}
 		}, "FDCRESET");
-		map(0x4000000b, 0x4000000b).lw8([this] (uint8_t data)
+		map(0x4000000b, 0x4000000b).lw8([this] (const uint8_t data)
 		{
 			LOG("(%s) IOP VME interrupts %s\n", machine().describe_context(),
 				data > 0 ? "enabled" : "disabled");
 			// TODO: implement
 		}, "VMEINTEN");
-		map(0x4000000c, 0x4000000c).lw8([this] (uint8_t data)
+		map(0x4000000c, 0x4000000c).lw8([this] (const uint8_t data)
 		{
 			LOG("(%s) FDC format set to %s\n", machine().describe_context(),
 				data > 0 ? "IBM" : "ECMA");
 			// TODO: implement
 		}, "FDCFMT");
-		map(0x4000000d, 0x4000000d).lw8([this] (uint8_t data)
+		map(0x4000000d, 0x4000000d).lw8([this] (const uint8_t data)
 		{
 			LOG("(%s) IOP main memory parity check %s\n", machine().describe_context(),
 				data > 0 ? "enabled" : "disabled");
 			// TODO: implement
 		}, "PARITYEN");
-		map(0x4000000e, 0x4000000e).lw8([this] (uint8_t data)
+		map(0x4000000e, 0x4000000e).lw8([this] (const uint8_t data)
 		{
 			LOG("(%s) LED4 %s\n", machine().describe_context(),
 				data > 0 ? "on" : "off");
 			// TODO: implement
 		}, "LED4");
-		map(0x4000000e, 0x4000000e).lw8([this] (uint8_t data)
+		map(0x4000000f, 0x4000000f).lw8([this] (const uint8_t data)
 		{
 			LOG("(%s) LED3 %s\n", machine().describe_context(),
 				data > 0 ? "on" : "off");
@@ -767,7 +774,7 @@ namespace
 		// SCSI registers
 		map(0x4e000000, 0x4e000000).rw(m_scsi, FUNC(wd33c93_device::indir_addr_r), FUNC(wd33c93_device::indir_addr_w));
 		map(0x4e000001, 0x4e000001).rw(m_scsi, FUNC(wd33c93_device::indir_reg_r), FUNC(wd33c93_device::indir_reg_w));
-		map(0x64000000, 0x64000000).rw(m_scsi, FUNC(wd33c93_device::dma_r), FUNC(wd33c93_device::dma_w)); // TODO: temporary until wrapper is fixed
+		map(0x64000000, 0x64000003).rw(m_scsi, FUNC(wd33c93_device::dma_r), FUNC(wd33c93_device::dma_w)); // TODO: temporary until wrapper is fixed
 
 		// Platform hardware
 		// TODO: IDROM does not necessarily have all the data it should, need dump from real front panel ROM
@@ -916,13 +923,13 @@ namespace
 							LOG("CPU Control offset 0x1 = 0x%x\n", data);
 						}, "RSVD");
 		map(0x04400005, 0x04400005).lw8([this](uint8_t data)
-								{
-									LOG("LED2 0x%x\n", data);
-								}, "LED2");
+						{
+							LOG("LED2 0x%x\n", data);
+						}, "LED2");
 		map(0x04400007, 0x04400007).lw8([this](uint8_t data)
-										{
-											LOG("LED1 0x%x\n", data);
-										}, "LED1");
+						{
+							LOG("LED1 0x%x\n", data);
+						}, "LED1");
 	}
 
 	template <news_iop_base_state::iop_irq_number Number>
@@ -1288,7 +1295,7 @@ namespace
 		// Early (pre-OS-3) bootloaders are extremely picky about IDNT data and reported capacity; ensure you are using IDNT data and the matching size reported
 		// from an actual CDC drive if dealing with early versions.
 		// Note: Only the NWS-891 came with a CD-ROM as a default option, others required an external CD-ROM drive
-		NSCSI_BUS(config, "scsi");
+		NSCSI_BUS(config, m_scsi_bus);
 		NSCSI_CONNECTOR(config, "scsi:0", news_scsi_devices, "harddisk");
 		NSCSI_CONNECTOR(config, "scsi:1", news_scsi_devices, nullptr);
 		NSCSI_CONNECTOR(config, "scsi:2", news_scsi_devices, nullptr);
