@@ -1399,7 +1399,7 @@ namespace
 		{
 			auto &adapter(downcast<wd33c9x_base_device &>(*device));
 			// TODO: "proper" SCSI DMA support
-			adapter.set_clock(8_MHz_XTAL); // TODO: confirm clock in schematic
+			adapter.set_clock(20_MHz_XTAL / 2);
 			adapter.irq_cb().set(*this, FUNC(news_iop_030_state::iop_irq_w<SCSI_IRQ>));
 			adapter.drq_cb().set(*this, FUNC(news_iop_030_state::iop_irq_w<SCSI_DRQ>));
 		});
