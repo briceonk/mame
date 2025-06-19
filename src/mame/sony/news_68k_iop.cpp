@@ -57,17 +57,19 @@
  *  - http://bitsavers.org/pdf/sony/news/Sony_NEWS_Technical_Manual_3ed_199103.pdf
  *  - https://katsu.watanabe.name/doc/sonynews/model.html
  *
- * TODO:
- *   - MMU emulation improvements (are all the right status bits set? any missing features? etc)
- *   - Debug general OS issues - random segfaults when running `ps`, system sometimes fails to shutdown when running
- *     `shutdown -x now` after using the networking stack, etc.
+ * TODO (all):
  *   - AST (Asynchronous System Trap) emulation
  *   - System cache emulation
  *   - Expansion slots (I/O Bus and VMEBus)
- *   - Networking is very flaky, especially on NEWS-OS 4.
  *   - Graphics, kb/ms, and parallel port emulation
  *   - Hyperbus handshake for IOP and CPU accesses. The bus has arbitration circuitry to prevent bus contention when
  *     both the CPU and IOP are trying to access the hyperbus (RAM and VME)
+ *
+ * TODO (8xx/9xx):
+ *   - MMU emulation improvements (are all the right status bits set? any missing features? etc)
+ *   - Debug general OS issues - random segfaults when running `ps`, system sometimes fails to shutdown when running
+ *     `shutdown -x now` after using the networking stack, etc.
+ *   - Networking is very flaky, especially on NEWS-OS 4.
  */
 
 #include "emu.h"
