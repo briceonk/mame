@@ -169,7 +169,7 @@ namespace
 		void iop_map_common(address_map &map) ATTR_COLD;
 		void iop_autovector_map(address_map &map) ATTR_COLD;
 		void hyperbus_map(address_map &map) ATTR_COLD;
-		virtual void install_ram() = 0; // TODO: find better way to do this?
+		virtual void install_ram() = 0;
 
 		// machine config
 		void common(machine_config &config) ATTR_COLD;
