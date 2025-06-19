@@ -13,12 +13,12 @@
 #include "spec128.h"
 
 #include "glukrs.h"
+#include "tsconf_rs232.h"
 #include "tsconfdma.h"
 
 #include "beta_m.h"
 #include "machine/pckeybrd.h"
 #include "machine/spi_sdcard.h"
-#include "sound/ay8910.h"
 #include "sound/dac.h"
 #include "tilemap.h"
 
@@ -36,14 +36,13 @@ public:
 		, m_beta(*this, BETA_DISK_TAG)
 		, m_dma(*this, "dma")
 		, m_sdcard(*this, "sdcard")
+		, m_uart(*this, "uart")
 		, m_glukrs(*this, "glukrs")
 		, m_palette(*this, "palette")
 		, m_gfxdecode(*this, "gfxdecode")
 		, m_cram(*this, "cram")
 		, m_sfile(*this, "sfile")
 		, m_dac(*this, "dac")
-		, m_ay(*this, "ay%u", 0U)
-		, m_mod_ay(*this, "MOD_AY")
 	{
 	}
 
@@ -187,7 +186,6 @@ private:
 	void tsconf_spi_miso_w(u8 data);
 	u8 tsconf_port_f7_r(offs_t offset);
 	void tsconf_port_f7_w(offs_t offset, u8 data);
-	void tsconf_ay_address_w(u8 data);
 
 	void tsconf_update_bank0();
 	u8 beta_neutral_r(offs_t offset);
@@ -224,6 +222,7 @@ private:
 	required_device<beta_disk_device> m_beta;
 	required_device<tsconfdma_device> m_dma;
 	required_device<spi_sdcard_device> m_sdcard;
+	required_device<tsconf_rs232_device> m_uart;
 	u8 m_zctl_di = 0;
 	u8 m_zctl_cs = 0;
 
@@ -239,9 +238,6 @@ private:
 	std::vector<sprite_data> m_sprites_cache;
 
 	required_device<dac_byte_interface> m_dac;
-	required_device_array<ym2149_device, 2> m_ay;
-	u8 m_ay_selected;
-	required_ioport m_mod_ay;
 };
 
 /*----------- defined in drivers/tsconf.c -----------*/

@@ -50,6 +50,10 @@
     By default, the inputs will have been resampled to match the output
     sample rate, unless otherwise specified.
 
+    SOUND_DISABLE_THREADING is to be defined when your environment does
+    not support threads (e.g. emscripten).  The effects suddenly become
+    costly then though.
+
 ***************************************************************************/
 
 #pragma once
@@ -63,9 +67,13 @@
 
 #include "wavwrite.h"
 #include "interface/audio.h"
+
+#ifndef SOUND_DISABLE_THREADING
 #include <mutex>
 #include <thread>
 #include <condition_variable>
+#endif
+
 
 //**************************************************************************
 //  CONSTANTS
@@ -76,23 +84,6 @@ constexpr u32 SAMPLE_RATE_INPUT_ADAPTIVE = 0xffffffff;
 constexpr u32 SAMPLE_RATE_OUTPUT_ADAPTIVE = 0xfffffffe;
 constexpr u32 SAMPLE_RATE_ADAPTIVE  = 0xfffffffd;
 
-//**************************************************************************
-//  DEBUGGING
-//**************************************************************************
-
-// turn this on to enable aggressive assertions and other checks
-#ifdef MAME_DEBUG
-#define SOUND_DEBUG (1)
-#else
-#define SOUND_DEBUG (1)
-#endif
-
-// if SOUND_DEBUG is on, make assertions fire regardless of MAME_DEBUG
-#if (SOUND_DEBUG)
-#define sound_assert(x) do { if (!(x)) { osd_printf_error("sound_assert: " #x "\n"); osd_break_into_debugger("sound_assert: " #x "\n"); } } while (0)
-#else
-#define sound_assert assert
-#endif
 
 using stream_update_delegate = delegate<void (sound_stream &stream)>;
 class audio_effect;
@@ -591,7 +582,7 @@ private:
 	void update(s32);
 
 	// handle mixing mapping update if needed
-	static std::vector<u32> find_channel_mapping(const std::array<double, 3> &position, const osd::audio_info::node_info *node);
+	static std::vector<u32> find_channel_mapping(const osd::channel_position  &pos, const osd::audio_info::node_info *node);
 	void startup_cleanups();
 	void streams_update();
 	template<bool is_output, typename S> void apply_osd_changes(std::vector<S> &streams);
@@ -641,10 +632,13 @@ private:
 	std::vector<mixing_step> m_output_mixing_steps; // actions to take to fill the osd streams buffers
 	std::vector<config_mapping> m_configs; // mapping user configuration
 
+#ifndef SOUND_DISABLE_THREADING
 	std::mutex                      m_effects_mutex;
 	std::mutex                      m_effects_data_mutex;
 	std::condition_variable         m_effects_condition;
 	std::unique_ptr<std::thread>    m_effects_thread;
+#endif
+
 	std::vector<std::unique_ptr<audio_effect>> m_default_effects;
 	bool m_effects_done;
 	attotime m_effects_prev_time, m_effects_cur_time;
