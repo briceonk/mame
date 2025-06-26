@@ -23,6 +23,8 @@
 
     TODO: There are probably more ROMs for Revelations and related, the disc
     contains full data for a memory based quiz
+    Vision Quest currently requires a soft reset on the POWERING UP instruction to boot, we may be
+    missing something in the initialisation.
 
     BTANB for Revelations:
     Game options cannot be adjusted, any attempt to do so resets the machine (seen on real hardware)
@@ -256,7 +258,7 @@ uint8_t cops_state::io1_r(offs_t offset)
 	switch( offset & 0x0f )
 	{
 		// case 0x01:  /* SW0 */
-		// 	return m_switches[0]->read();
+		//  return m_switches[0]->read();
 		case 0x07: /* WOP7 - watchdog*/
 			return 1;
 		case 0x08:  /* SW0 */
@@ -842,12 +844,15 @@ ROM_START( visnqust )
 
 	DISK_REGION( "laserdisc" )
 	DISK_IMAGE_READONLY( "visionquest", 0, BAD_DUMP SHA1(d5039c5390894faeb48098216e892e6fb4bb7ca2))  //one disc, no correction, old method
+
+	ROM_REGION( 0x2000, "nvram", 0 )
+	ROM_LOAD( "default_nvram", 0x0000, 0x2000, CRC(8a422121) SHA1 (3f05f7b4c8b9627fdf34cb25d3e1d2d587ae3b30) )
 ROM_END
 
 } // Anonymous namespace
 
 
-GAMEL( 1994, cops,     0,    cops,     cops,     cops_state, init_cops, ROT0, "Atari Games",                           		 "Cops (USA)",  MACHINE_NOT_WORKING | MACHINE_NO_SOUND, layout_cops )
-GAMEL( 1994, copsuk,   cops, cops,     cops,     cops_state, init_cops, ROT0, "Nova Productions Ltd./ Deith Leisure",  		 "Cops (UK)",   MACHINE_NOT_WORKING | MACHINE_NO_SOUND, layout_cops )
-GAMEL( 1991, revlatns, 0,    revlatns, revlatns, cops_state, init_cops, ROT0, "Nova Productions Ltd.",                 		 "Revelations", MACHINE_SUPPORTS_SAVE, layout_revlatns )
+GAMEL( 1994, cops,     0,    cops,     cops,     cops_state, init_cops, ROT0, "Atari Games",                                 "Cops (USA)",  MACHINE_NOT_WORKING | MACHINE_NO_SOUND, layout_cops )
+GAMEL( 1994, copsuk,   cops, cops,     cops,     cops_state, init_cops, ROT0, "Nova Productions Ltd./ Deith Leisure",        "Cops (UK)",   MACHINE_NOT_WORKING | MACHINE_NO_SOUND, layout_cops )
+GAMEL( 1991, revlatns, 0,    revlatns, revlatns, cops_state, init_cops, ROT0, "Nova Productions Ltd.",                       "Revelations", MACHINE_SUPPORTS_SAVE, layout_revlatns )
 GAMEL( 1992, visnqust, 0,    visnqust, visnqust, cops_state, init_cops, ROT0, "Kramer Manufacturing / Nova Productions Ltd.","Vision Quest", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS | MACHINE_SUPPORTS_SAVE, layout_visnqust )

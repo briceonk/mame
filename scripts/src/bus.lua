@@ -728,6 +728,8 @@ if (BUSES["BBC_1MHZBUS"]~=null) then
 		MAME_DIR .. "src/devices/bus/bbc/1mhzbus/autoprom.h",
 		MAME_DIR .. "src/devices/bus/bbc/1mhzbus/barrybox.cpp",
 		MAME_DIR .. "src/devices/bus/bbc/1mhzbus/barrybox.h",
+		MAME_DIR .. "src/devices/bus/bbc/1mhzbus/beebex.cpp",
+		MAME_DIR .. "src/devices/bus/bbc/1mhzbus/beebex.h",
 		MAME_DIR .. "src/devices/bus/bbc/1mhzbus/beebopl.cpp",
 		MAME_DIR .. "src/devices/bus/bbc/1mhzbus/beebopl.h",
 		MAME_DIR .. "src/devices/bus/bbc/1mhzbus/beebsid.cpp",
@@ -2168,6 +2170,23 @@ if (BUSES["MTX"]~=null) then
 	}
 end
 
+---------------------------------------------------
+--
+--@src/devices/bus/mz80/mz80_exp.h,BUSES["MZ80"] = true
+---------------------------------------------------
+
+if (BUSES["MZ80"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/bus/mz80/mz1e30.cpp",
+		MAME_DIR .. "src/devices/bus/mz80/mz1e30.h",
+		MAME_DIR .. "src/devices/bus/mz80/mz1e35.cpp",
+		MAME_DIR .. "src/devices/bus/mz80/mz1e35.h",
+		MAME_DIR .. "src/devices/bus/mz80/mz1r37.cpp",
+		MAME_DIR .. "src/devices/bus/mz80/mz1r37.h",
+		MAME_DIR .. "src/devices/bus/mz80/mz80_exp.cpp",
+		MAME_DIR .. "src/devices/bus/mz80/mz80_exp.h",
+	}
+end
 
 ---------------------------------------------------
 --
@@ -3047,6 +3066,8 @@ if (BUSES["A2BUS"]~=null) then
 		MAME_DIR .. "src/devices/bus/a2bus/a2estd80col.h",
 		MAME_DIR .. "src/devices/bus/a2bus/a2hsscsi.cpp",
 		MAME_DIR .. "src/devices/bus/a2bus/a2hsscsi.h",
+		MAME_DIR .. "src/devices/bus/a2bus/a2ieee488.cpp",
+		MAME_DIR .. "src/devices/bus/a2bus/a2ieee488.h",
 		MAME_DIR .. "src/devices/bus/a2bus/a2iwm.cpp",
 		MAME_DIR .. "src/devices/bus/a2bus/a2iwm.h",
 		MAME_DIR .. "src/devices/bus/a2bus/a2mcms.cpp",

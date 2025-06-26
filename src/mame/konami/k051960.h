@@ -13,7 +13,7 @@ enum
 };
 
 
-#define K051960_CB_MEMBER(_name)   void _name(int *code, int *color, int *priority, bool *shadow)
+#define K051960_CB_MEMBER(_name) void _name(int *code, int *color, int *priority, bool *shadow)
 
 
 class k051960_device : public device_t, public device_gfx_interface, public device_video_interface
@@ -28,17 +28,16 @@ class k051960_device : public device_t, public device_gfx_interface, public devi
 public:
 	using sprite_delegate = device_delegate<void (int *code, int *color, int *priority, bool *shadow)>;
 
-	k051960_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+	k051960_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock);
 
 	auto irq_handler() { return m_irq_handler.bind(); }
-
 	auto nmi_handler() { return m_nmi_handler.bind(); }
 
+	auto k051937_shadow_mode() { return m_shadow_config_cb.bind(); }
 
 	// static configuration
 	template <typename... T> void set_sprite_callback(T &&... args) { m_k051960_cb.set(std::forward<T>(args)...); }
 	void set_plane_order(int order);
-	void set_shadow_inv(bool inv);
 
 	/*
 	The callback is passed:
@@ -71,27 +70,31 @@ protected:
 
 private:
 	// internal state
-	std::unique_ptr<uint8_t[]>   m_ram;
+	u8 m_ram[0x400];
+	u8 m_buffer[0x400];
 
-	required_region_ptr<uint8_t> m_sprite_rom;
+	required_region_ptr<u8> m_sprite_rom;
 
 	emu_timer *m_scanline_timer;
 
 	sprite_delegate m_k051960_cb;
+	devcb_write_line m_shadow_config_cb;
 
 	devcb_write_line m_irq_handler;
 	// TODO: is this even used by anything?
 	devcb_write_line m_firq_handler;
 	devcb_write_line m_nmi_handler;
 
-	uint8_t m_spriterombank[3];
-	uint8_t m_romoffset;
-	bool    m_spriteflip, m_readroms;
-	uint8_t m_shadow_config;
-	bool    m_inv_shadow;
-	bool    m_nmi_enabled;
+	u8 m_spriterombank[3];
+	u8 m_romoffset;
+	bool m_spriteflip;
+	bool m_sprites_busy;
+	bool m_sprites_disabled;
+	bool m_readroms;
+	u8 m_shadow_config;
+	bool m_nmi_enabled;
 
-	int k051960_fetchromdata( int byte );
+	int k051960_fetchromdata(int byte);
 };
 
 DECLARE_DEVICE_TYPE(K051960, k051960_device)
