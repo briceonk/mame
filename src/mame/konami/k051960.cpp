@@ -24,11 +24,11 @@ The 051960 can also generate IRQ, FIRQ and NMI signals.
 memory map:
 000-007 is for the 051937, but also seen by the 051960
 400-7ff is 051960 only
-000     R  bit 0 = busy flag for sprite processing (does not toggle if bit 4 is set)
+000     R  bit 0 = busy flag for sprite dma (does not toggle if bit 4 is set)
                    aliens waits for it to be 0 before starting to copy sprite data
                    thndrx2 needs it to pulse for the startup checks to succeed
-000     W  bit 0 = irq acknowledge
-           bit 1 = firq acknowledge
+000     W  bit 0 = irq enable/acknowledge
+           bit 1 = firq enable/acknowledge
            bit 2 = nmi enable/acknowledge
            bit 3 = flip screen (applies to sprites only, not tilemaps)
            bit 4 = disable internal sprite processing
@@ -141,19 +141,16 @@ k051960_device::k051960_device(const machine_config &mconfig, const char *tag, d
 	, device_gfx_interface(mconfig, *this, gfxinfo)
 	, device_video_interface(mconfig, *this)
 	, m_sprite_rom(*this, DEVICE_SELF)
-	, m_scanline_timer(nullptr)
 	, m_k051960_cb(*this)
 	, m_shadow_config_cb(*this)
 	, m_irq_handler(*this)
 	, m_firq_handler(*this)
 	, m_nmi_handler(*this)
+	, m_firq_scanline(nullptr)
+	, m_nmi_scanline(nullptr)
 	, m_romoffset(0)
-	, m_spriteflip(false)
-	, m_sprites_busy(false)
-	, m_sprites_disabled(false)
-	, m_readroms(false)
+	, m_control(0)
 	, m_shadow_config(0)
-	, m_nmi_enabled(false)
 {
 }
 
@@ -193,12 +190,26 @@ void k051960_device::device_start()
 	if (!palette().device().started())
 		throw device_missing_dependencies();
 
+	// and register a callback for vblank state
+	screen().register_vblank_callback(vblank_state_delegate(&k051960_device::vblank_callback, this));
+
 	// bind callbacks
 	m_k051960_cb.resolve();
 
-	// allocate scanline timer and start at first scanline
-	m_scanline_timer = timer_alloc(FUNC(k051960_device::scanline_callback), this);
-	m_scanline_timer->adjust(screen().time_until_pos(0));
+	// allocate scanline timers and start at first scanline
+	if (!m_firq_handler.isunset())
+	{
+		m_firq_scanline = timer_alloc(FUNC(k051960_device::firq_scanline), this);
+		m_firq_scanline->adjust(screen().time_until_pos(0), 0);
+	}
+
+	if (!m_nmi_handler.isunset())
+	{
+		m_nmi_scanline = timer_alloc(FUNC(k051960_device::nmi_scanline), this);
+		m_nmi_scanline->adjust(screen().time_until_pos(0), 0);
+	}
+
+	m_sprites_busy = timer_alloc(timer_expired_delegate());
 
 	decode_gfx();
 	gfx(0)->set_colors(palette().entries() / gfx(0)->depth());
@@ -211,12 +222,8 @@ void k051960_device::device_start()
 
 	// register for save states
 	save_item(NAME(m_romoffset));
-	save_item(NAME(m_spriteflip));
-	save_item(NAME(m_sprites_busy));
-	save_item(NAME(m_sprites_disabled));
-	save_item(NAME(m_readroms));
+	save_item(NAME(m_control));
 	save_item(NAME(m_shadow_config));
-	save_item(NAME(m_nmi_enabled));
 	save_item(NAME(m_spriterombank));
 	save_item(NAME(m_ram));
 	save_item(NAME(m_buffer));
@@ -228,15 +235,10 @@ void k051960_device::device_start()
 
 void k051960_device::device_reset()
 {
-	m_romoffset = 0;
-	m_spriteflip = false;
-	m_sprites_busy = false;
-	m_sprites_disabled = false;
-	m_readroms = false;
-	m_shadow_config = 0;
-	m_nmi_enabled = false;
+	for (int i = 0; i < 5; i++)
+		k051937_w(i, 0);
 
-	memset(m_spriterombank, 0, sizeof(m_spriterombank));
+	m_romoffset = 0;
 }
 
 
@@ -244,36 +246,50 @@ void k051960_device::device_reset()
     DEVICE HANDLERS
 *****************************************************************************/
 
-TIMER_CALLBACK_MEMBER( k051960_device::scanline_callback )
+void k051960_device::vblank_callback(screen_device &screen, bool state)
 {
-	// range 0..255, or 264?
-	u8 y = screen().vpos();
+	if (!state)
+		return;
 
-	// 32v
-	if ((y % 32 == 0) && m_nmi_enabled)
-		m_nmi_handler(ASSERT_LINE);
-
-	// vblank
-	if (y == 240)
-	{
+	// vblank interrupt
+	if (BIT(m_control, 0))
 		m_irq_handler(ASSERT_LINE);
 
-		// copy sprites to framebuffer, unless sprite processing was disabled
-		if (!m_sprites_disabled)
-		{
-			m_sprites_busy = true;
-			memcpy(m_buffer, m_ram, sizeof(m_buffer));
-		}
+	// do the sprite dma, unless sprite processing was disabled
+	if (!BIT(m_control, 4))
+	{
+		memcpy(m_buffer, m_ram, sizeof(m_buffer));
+
+		// count number of active sprites in the buffer
+		int active = 0;
+		for (int i = 0; i < sizeof(m_buffer); i += 8)
+			active += BIT(m_buffer[i], 7);
+
+		// 32 clocks per active sprite, around 18 clocks per inactive sprite
+		const u32 ticks = (active * 32) + (128 - active) * 18;
+		m_sprites_busy->adjust(attotime::from_ticks(ticks * 4, clock()));
 	}
-
-	if (y == 0)
-		m_sprites_busy = false;
-
-	// wait for next line
-	m_scanline_timer->adjust(screen().time_until_pos(y + 1));
 }
 
-int k051960_device::k051960_fetchromdata(int byte)
+TIMER_CALLBACK_MEMBER(k051960_device::firq_scanline)
+{
+	// FIRQ every other scanline
+	if (BIT(m_control, 1))
+		m_firq_handler(ASSERT_LINE);
+
+	m_firq_scanline->adjust(screen().time_until_pos(screen().vpos() + 2));
+}
+
+TIMER_CALLBACK_MEMBER(k051960_device::nmi_scanline)
+{
+	// NMI every 32 scanlines (not on 16V)
+	if (BIT(m_control, 2))
+		m_nmi_handler(ASSERT_LINE);
+
+	m_nmi_scanline->adjust(screen().time_until_pos(screen().vpos() + 32));
+}
+
+u8 k051960_device::k051960_fetchromdata(offs_t offset)
 {
 	int code, color, pri, off1, addr;
 	bool shadow;
@@ -286,21 +302,22 @@ int k051960_device::k051960_fetchromdata(int byte)
 	shadow = false;
 	m_k051960_cb(&code, &color, &pri, &shadow);
 
-	addr = (code << 7) | (off1 << 2) | byte;
+	addr = (code << 7) | (off1 << 2) | offset;
 	addr &= m_sprite_rom.length() - 1;
 
-//  popmessage("%s: addr %06x", machine().describe_context(), addr);
-
+	//popmessage("%s: addr %06x", machine().describe_context(), addr);
 	return m_sprite_rom[addr];
 }
 
 u8 k051960_device::k051960_r(offs_t offset)
 {
-	if (m_readroms)
+	if (BIT(m_control, 5))
 	{
-		/* the 051960 remembers the last address read and uses it when reading the sprite ROMs */
-		m_romoffset = (offset & 0x3fc) >> 2;
-		return k051960_fetchromdata(offset & 3);    /* only 88 Games reads the ROMs from here */
+		// the 051960 remembers the last address read and uses it when reading the sprite ROMs
+		if (!machine().side_effects_disabled())
+			m_romoffset = (offset & 0x3fc) >> 2;
+
+		return k051960_fetchromdata(offset & 3); // only 88 Games reads the ROMs from here
 	}
 	else
 		return m_ram[offset];
@@ -315,10 +332,12 @@ void k051960_device::k051960_w(offs_t offset, u8 data)
 /* should this be split by k051960? */
 u8 k051960_device::k051937_r(offs_t offset)
 {
-	if (m_readroms && offset >= 4 && offset < 8)
+	offset &= 7;
+
+	if (BIT(m_control, 5) && offset & 4)
 		return k051960_fetchromdata(offset & 3);
 	else if (offset == 0)
-		return m_sprites_busy ? 1 : 0;
+		return m_sprites_busy->enabled() ? 1 : 0;
 
 	//logerror("%s: read unknown 051937 address %x\n", m_maincpu->pc(), offset);
 	return 0;
@@ -326,37 +345,33 @@ u8 k051960_device::k051937_r(offs_t offset)
 
 void k051960_device::k051937_w(offs_t offset, u8 data)
 {
+	offset &= 7;
+
 	if (offset == 0)
 	{
-		//if (data & 0xc2) popmessage("051937 reg 00 = %02x",data);
+		// clear interrupts
+		if (BIT(~data & m_control, 0))
+			m_irq_handler(CLEAR_LINE);
 
-		if (BIT(data, 0)) m_irq_handler(CLEAR_LINE);  // bit 0, irq ack
-		if (BIT(data, 1)) m_firq_handler(CLEAR_LINE); // bit 1, firq ack
+		if (BIT(~data & m_control, 1))
+			m_firq_handler(CLEAR_LINE);
 
-		// bit 2, nmi enable/ack
-		m_nmi_enabled = BIT(data, 2);
-		if (m_nmi_enabled)
+		if (BIT(~data & m_control, 2))
 			m_nmi_handler(CLEAR_LINE);
 
-		/* bit 3 = flip screen */
-		m_spriteflip = BIT(data, 3);
-
-		/* bit 4 used by Devastators and TMNT, to protect sprite RAM from corruption during updates ? */
-		m_sprites_disabled = BIT(data, 4);
-
-		/* bit 5 = enable gfx ROM reading */
-		m_readroms = BIT(data, 5);
-		//logerror("%s: write %02x to 051937 address %x\n", m_maincpu->pc(), data, offset);
+		//if (data & 0xc2) popmessage("051937 reg 00 = %02x",data);
+		m_control = data;
 	}
 	else if (offset == 1)
 	{
 		if (0)
 			logerror("%s: %02x to 051937 address %x\n", machine().describe_context(), data, offset);
 
-		m_shadow_config = data & 0x07;
-
 		// callback for setting palette shadow mode
-		m_shadow_config_cb(m_shadow_config & 1);
+		if (BIT(data ^ m_shadow_config, 0))
+			m_shadow_config_cb(data & 1);
+
+		m_shadow_config = data & 0x07;
 	}
 	else if (offset >= 2 && offset < 5)
 	{
@@ -401,7 +416,7 @@ void k051960_device::k051937_w(offs_t offset, u8 data)
  * Note that Aliens also uses the shadow bit to select the second sprite bank.
  */
 
-void k051960_device::k051960_sprites_draw( bitmap_ind16 &bitmap, const rectangle &cliprect, bitmap_ind8 &priority_bitmap, int min_priority, int max_priority )
+void k051960_device::k051960_sprites_draw(bitmap_ind16 &bitmap, const rectangle &cliprect, bitmap_ind8 &priority_bitmap, int min_priority, int max_priority)
 {
 	static constexpr int NUM_SPRITES = 128;
 
@@ -506,7 +521,7 @@ void k051960_device::k051960_sprites_draw( bitmap_ind16 &bitmap, const rectangle
 		zoomy *= 8 / h;
 		zoomy = 0x10000 / 128 * zoomy;
 
-		if (m_spriteflip)
+		if (BIT(m_control, 3))
 		{
 			ox = 512 - (zoomx * w >> 12) - ox;
 			oy = 256 - (zoomy * h >> 12) - oy;
@@ -543,14 +558,14 @@ void k051960_device::k051960_sprites_draw( bitmap_ind16 &bitmap, const rectangle
 						gfx(0)->prio_transtable(bitmap,cliprect,
 								c,color,
 								flipx,flipy,
-								sx & 0x1ff,sy,
+								(sx & 0x1ff) - 96, sy,
 								priority_bitmap,pri,
 								drawmode_table);
 					else
 						gfx(0)->transtable(bitmap,cliprect,
 								c,color,
 								flipx,flipy,
-								sx & 0x1ff,sy,
+								(sx & 0x1ff) - 96, sy,
 								drawmode_table);
 				}
 			}
@@ -584,7 +599,7 @@ void k051960_device::k051960_sprites_draw( bitmap_ind16 &bitmap, const rectangle
 						gfx(0)->prio_zoom_transtable(bitmap,cliprect,
 								c,color,
 								flipx,flipy,
-								sx & 0x1ff,sy,
+								(sx & 0x1ff) - 96, sy,
 								(zw << 16) / 16,(zh << 16) / 16,
 								priority_bitmap,pri,
 								drawmode_table);
@@ -592,24 +607,11 @@ void k051960_device::k051960_sprites_draw( bitmap_ind16 &bitmap, const rectangle
 						gfx(0)->zoom_transtable(bitmap,cliprect,
 								c,color,
 								flipx,flipy,
-								sx & 0x1ff,sy,
+								(sx & 0x1ff) - 96, sy,
 								(zw << 16) / 16,(zh << 16) / 16,
 								drawmode_table);
 				}
 			}
 		}
 	}
-#if 0
-if (machine().input().code_pressed(KEYCODE_D))
-{
-	FILE *fp;
-	fp=fopen("SPRITE.DMP", "w+b");
-	if (fp)
-	{
-		fwrite(k051960_ram, 0x400, 1, fp);
-		popmessage("saved");
-		fclose(fp);
-	}
-}
-#endif
 }
