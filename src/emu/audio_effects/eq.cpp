@@ -19,23 +19,14 @@ audio_effect_eq::audio_effect_eq(speaker_device *speaker, u32 sample_rate, audio
 
 	// Minimal init to avoid using uninitialized values when reset_*
 	// recomputes filters
-
 	for(u32 band = 0; band != BANDS; band++) {
 		m_f[band] = 1000;
-		m_q[band] = 0.7;
+		m_q[band] = DEFAULT_Q;
 		m_db[band] = 0;
 	}
 
 	m_band_mask = 0;
-
-	reset_mode();
-	reset_low_shelf();
-	reset_high_shelf();
-	for(u32 band = 0; band != BANDS; band++) {
-		reset_f(band);
-		reset_q(band);
-		reset_db(band);
-	}
+	reset_all();
 }
 
 void audio_effect_eq::reset_mode()
@@ -47,7 +38,7 @@ void audio_effect_eq::reset_mode()
 
 void audio_effect_eq::reset_f(u32 band)
 {
-	static const u32 defs[BANDS] = { 80, 200, 500, 3200, 8000 };
+	static const u32 defs[BANDS] = { 100, 330, 1000, 3300, 10000 };
 	audio_effect_eq *d = static_cast<audio_effect_eq *>(m_default);
 	m_isset_f[band] = false;
 	m_f[band] = d ? d->f(band) : defs[band];
@@ -58,7 +49,7 @@ void audio_effect_eq::reset_q(u32 band)
 {
 	audio_effect_eq *d = static_cast<audio_effect_eq *>(m_default);
 	m_isset_q[band] = false;
-	m_q[band] = d ? d->q(band) : 0.7;
+	m_q[band] = d ? d->q(band) : DEFAULT_Q;
 	build_filter(band);
 }
 
@@ -84,6 +75,18 @@ void audio_effect_eq::reset_high_shelf()
 	m_isset_high_shelf = false;
 	m_high_shelf = d ? d->high_shelf() : true;
 	build_filter(BANDS-1);
+}
+
+void audio_effect_eq::reset_all()
+{
+	reset_mode();
+	reset_low_shelf();
+	reset_high_shelf();
+	for(u32 band = 0; band != BANDS; band++) {
+		reset_f(band);
+		reset_q(band);
+		reset_db(band);
+	}
 }
 
 void audio_effect_eq::config_load(util::xml::data_node const *ef_node)
@@ -211,7 +214,7 @@ void audio_effect_eq::set_high_shelf(bool active)
 
 void audio_effect_eq::build_filter(u32 band)
 {
-	if(m_db[band] == 0)
+	if(s32(roundf(m_db[band] * 10.0f)) == 0)
 		m_band_mask &= ~(1 << band);
 	else
 		m_band_mask |= 1 << band;
@@ -230,7 +233,7 @@ void audio_effect_eq::build_filter(u32 band)
 void audio_effect_eq::build_low_shelf(u32 band)
 {
 	auto &fi = m_filter[band];
-    if(m_db[band] == 0) {
+	if(!BIT(m_band_mask, band)) {
 		fi.clear();
 		return;
 	}
@@ -239,30 +242,30 @@ void audio_effect_eq::build_low_shelf(u32 band)
 	float f = std::clamp(float(m_f[band]), 1.0f, sr/2.0f - 1.0f);
 
 	float V = pow(10, abs(m_db[band])/20);
-    float K = tan(M_PI*f/sr);
+	float K = tan(M_PI*f/sr);
 	float K2 = K*K;
 
 	if(m_db[band] > 0) {
-        float d = 1 + sqrt(2)*K + K2;
-        fi.m_b0 = (1 + sqrt(2*V)*K + V*K2)/d;
-        fi.m_b1 = 2*(V*K2-1)/d;
-        fi.m_b2 = (1 - sqrt(2*V)*K + V*K2)/d;
-        fi.m_a1 = 2*(K2-1)/d;
-        fi.m_a2 = (1 - sqrt(2)*K + K2)/d;
-    } else {
-        float d = 1 + sqrt(2*V)*K + V*K2;
-        fi.m_b0 = (1 + sqrt(2)*K + K2)/d;
-        fi.m_b1 = 2*(K2-1)/d;
-        fi.m_b2 = (1 - sqrt(2)*K + K2)/d;
-        fi.m_a1 = 2*(V*K2-1)/d;
-        fi.m_a2 = (1 - sqrt(2*V)*K + V*K2)/d;
+		float d = 1 + sqrt(2)*K + K2;
+		fi.m_b0 = (1 + sqrt(2*V)*K + V*K2)/d;
+		fi.m_b1 = 2*(V*K2-1)/d;
+		fi.m_b2 = (1 - sqrt(2*V)*K + V*K2)/d;
+		fi.m_a1 = 2*(K2-1)/d;
+		fi.m_a2 = (1 - sqrt(2)*K + K2)/d;
+	} else {
+		float d = 1 + sqrt(2*V)*K + V*K2;
+		fi.m_b0 = (1 + sqrt(2)*K + K2)/d;
+		fi.m_b1 = 2*(K2-1)/d;
+		fi.m_b2 = (1 - sqrt(2)*K + K2)/d;
+		fi.m_a1 = 2*(V*K2-1)/d;
+		fi.m_a2 = (1 - sqrt(2*V)*K + V*K2)/d;
 	}
 }
 
 void audio_effect_eq::build_high_shelf(u32 band)
 {
 	auto &fi = m_filter[band];
-    if(m_db[band] == 0) {
+	if(!BIT(m_band_mask, band)) {
 		fi.clear();
 		return;
 	}
@@ -271,7 +274,7 @@ void audio_effect_eq::build_high_shelf(u32 band)
 	float f = std::clamp(float(m_f[band]), 1.0f, sr/2.0f - 1.0f);
 
 	float V = pow(10, m_db[band]/20);
-    float K = tan(M_PI*f/sr);
+	float K = tan(M_PI*f/sr);
 	float K2 = K*K;
 
 	if(m_db[band] > 0) {
@@ -281,7 +284,7 @@ void audio_effect_eq::build_high_shelf(u32 band)
 		fi.m_b2 = (V - sqrt(2*V)*K + K2)/d;
 		fi.m_a1 = 2*(K2-1)/d;
 		fi.m_a2 = (1 - sqrt(2)*K + K2)/d;
-    } else {
+	} else {
 		float d = 1 + sqrt(2*V)*K + V*K2;
 		fi.m_b0 = V*(1 + sqrt(2)*K + K2)/d;
 		fi.m_b1 = 2*V*(K2-1)/d;
@@ -294,7 +297,7 @@ void audio_effect_eq::build_high_shelf(u32 band)
 void audio_effect_eq::build_peak(u32 band)
 {
 	auto &fi = m_filter[band];
-    if(m_db[band] == 0) {
+	if(!BIT(m_band_mask, band)) {
 		fi.clear();
 		return;
 	}
@@ -303,7 +306,7 @@ void audio_effect_eq::build_peak(u32 band)
 	float f = std::clamp(float(m_f[band]), 1.0f, sr/2.0f - 1.0f);
 
 	float V = pow(10, m_db[band]/20);
-    float K = tan(M_PI*f/sr);
+	float K = tan(M_PI*f/sr);
 	float K2 = K*K;
 	float Q = m_q[band];
 
@@ -314,7 +317,7 @@ void audio_effect_eq::build_peak(u32 band)
 		fi.m_b2 = (1 - V*K/Q + K2)/d;
 		fi.m_a1 = fi.m_b1;
 		fi.m_a2 = (1 - K/Q + K2)/d;
-    } else {
+	} else {
 		float d = 1 + K/(V*Q) + K2;
 		fi.m_b0 = (1 + K/Q + K2)/d;
 		fi.m_b1 = 2*(K2-1)/d;

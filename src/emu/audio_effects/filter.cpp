@@ -21,14 +21,9 @@ audio_effect_filter::audio_effect_filter(speaker_device *speaker, u32 sample_rat
 	// Minimal init to avoid using uninitialized values when reset_*
 	// recomputes filters
 	m_fl = m_fh = 1000;
-	m_ql = m_qh = 0.7;
+	m_ql = m_qh = DEFAULT_Q;
 
-	reset_lowpass_active();
-	reset_highpass_active();
-	reset_fl();
-	reset_fh();
-	reset_ql();
-	reset_qh();
+	reset_all();
 }
 
 void audio_effect_filter::reset_lowpass_active()
@@ -59,7 +54,7 @@ void audio_effect_filter::reset_ql()
 {
 	audio_effect_filter *d = static_cast<audio_effect_filter *>(m_default);
 	m_isset_ql = false;
-	m_ql = d ? d->ql() : 0.7;
+	m_ql = d ? d->ql() : DEFAULT_Q;
 	build_lowpass();
 }
 
@@ -75,8 +70,18 @@ void audio_effect_filter::reset_qh()
 {
 	audio_effect_filter *d = static_cast<audio_effect_filter *>(m_default);
 	m_isset_qh = false;
-	m_qh = d ? d->qh() : 0.7;
+	m_qh = d ? d->qh() : DEFAULT_Q;
 	build_highpass();
+}
+
+void audio_effect_filter::reset_all()
+{
+	reset_lowpass_active();
+	reset_highpass_active();
+	reset_fl();
+	reset_fh();
+	reset_ql();
+	reset_qh();
 }
 
 void audio_effect_filter::config_load(util::xml::data_node const *ef_node)
@@ -221,11 +226,8 @@ void audio_effect_filter::set_qh(float q)
 
 void audio_effect_filter::build_highpass()
 {
-	if(m_fh > m_fl)
-		set_fl(m_fh);
-
 	auto &fi = m_filter[0];
-    if(!m_highpass_active) {
+	if(!m_highpass_active) {
 		fi.clear();
 		return;
 	}
@@ -233,7 +235,7 @@ void audio_effect_filter::build_highpass()
 	float sr = m_sample_rate;
 	float fh = std::clamp(float(m_fh), 1.0f, sr/2.0f - 1.0f);
 
-    float K = tan(M_PI*fh/sr);
+	float K = tan(M_PI*fh/sr);
 	float K2 = K*K;
 	float Q = m_qh;
 
@@ -247,11 +249,8 @@ void audio_effect_filter::build_highpass()
 
 void audio_effect_filter::build_lowpass()
 {
-	if(m_fl < m_fh)
-		set_fh(m_fl);
-
 	auto &fi = m_filter[1];
-    if(!m_lowpass_active) {
+	if(!m_lowpass_active) {
 		fi.clear();
 		return;
 	}
@@ -259,7 +258,7 @@ void audio_effect_filter::build_lowpass()
 	float sr = m_sample_rate;
 	float fl = std::clamp(float(m_fl), 1.0f, sr/2.0f - 1.0f);
 
-    float K = tan(M_PI*fl/sr);
+	float K = tan(M_PI*fl/sr);
 	float K2 = K*K;
 	float Q = m_ql;
 
