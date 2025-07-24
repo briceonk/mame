@@ -488,24 +488,24 @@ void mcd212_device::process_dca()
 }
 
 template <int Path>
-static inline uint8_t BYTE_TO_CLUT(int icm, uint8_t byte)
+static inline uint8_t BYTE_TO_CLUT(int icm, uint8_t byte, bool clut_select)
 {
 	switch (icm)
 	{
-		case 1:
-			return byte;
-		case 3:
-			return (Path ? 0x80 : 0) | (byte & 0x7f);
-		case 4:
-			if (Path == 0)
-			{
-				return byte & 0x7f;
-			}
-			break;
-		case 11:
-			return (Path ? 0x80 : 0) | (byte & 0x0f);
-		default:
-			break;
+	case 1:
+		return byte;
+	case 3:
+		return (Path ? 0x80 : 0) | (byte & 0x7f);
+	case 4:
+		if (Path == 0)
+		{
+			return (clut_select ? 0x80 : 0) | (byte & 0x7f);
+		}
+		break;
+	case 11:
+		return (Path ? 0x80 : 0) | (byte & 0x0f);
+	default:
+		break;
 	}
 	return 0;
 }
@@ -621,6 +621,7 @@ void mcd212_device::process_vsr(uint32_t *pixels, bool *transparent)
 		}
 		else
 		{
+			bool clut_select = BIT(m_image_coding_method, ICM_CS_BIT);
 			if (icm == ICM_RGB555 && Path == 1)
 			{
 				const uint8_t byte1 = data2[(vsr2++ & 0x0007ffff) ^ 1];
@@ -633,12 +634,12 @@ void mcd212_device::process_vsr(uint32_t *pixels, bool *transparent)
 			else if (icm == ICM_CLUT4)
 			{
 				const uint8_t mask = (decodingMode == DDR_FT_RLE) ? 0x7 : 0xf;
-				color0 = m_clut[BYTE_TO_CLUT<Path>(icm, mask & (byte >> 4))];
-				color1 = m_clut[BYTE_TO_CLUT<Path>(icm, mask & byte)];
+				color0 = m_clut[BYTE_TO_CLUT<Path>(icm, mask & (byte >> 4), clut_select)];
+				color1 = m_clut[BYTE_TO_CLUT<Path>(icm, mask & byte, clut_select)];
 			}
 			else
 			{
-				color1 = color0 = m_clut[BYTE_TO_CLUT<Path>(icm, byte)];
+				color1 = color0 = m_clut[BYTE_TO_CLUT<Path>(icm, byte, clut_select)];
 			}
 
 			int length_m = mosaic_enable ? (mosaic_factor * 2) : 2;
@@ -674,13 +675,23 @@ const uint32_t mcd212_device::s_4bpp_color[16] =
 template <bool MosaicA, bool MosaicB, bool OrderAB>
 void mcd212_device::mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *plane_b, bool *transparent_b, uint32_t *out)
 {
-	const uint8_t mosaic_count_a = (m_mosaic_hold[0] & 0x0000ff) << 1;
-	const uint8_t mosaic_count_b = (m_mosaic_hold[1] & 0x0000ff) << 1;
+	const uint8_t icmA = get_icm<0>();
+	const uint8_t icmB = get_icm<1>();
+	uint16_t mosaic_count_a = (m_mosaic_hold[0] & 0x0000ff) << 1;
+	uint16_t mosaic_count_b = (m_mosaic_hold[1] & 0x0000ff) << 1;
 	const int width = get_screen_width();
 	const int border_width = get_border_width();
 
 	uint8_t *weight_a = &m_weight_factor[0][0];
 	uint8_t *weight_b = &m_weight_factor[1][0];
+
+	// Console Verified. CLUT4 pixels are drawn in pairs during VSR. So the mosaic here is halved.
+	if (icmA == ICM_CLUT4) {
+		mosaic_count_a >>= 1;
+	}
+	if (icmB == ICM_CLUT4) {
+		mosaic_count_b >>= 1;
+	}
 
 	for (int x = 0; x < width; x++)
 	{
@@ -740,39 +751,36 @@ void mcd212_device::mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *
 void mcd212_device::draw_cursor(uint32_t *scanline)
 {
 	if (!(m_cursor_control & CURCNT_EN))
+		return; // Cursor is Disabled
+
+	uint8_t color_index = m_cursor_control & CURCNT_COLOR;
+	if (m_blink_active)
 	{
-		return;
+		const bool invert = BIT(m_cursor_control, CURCNT_BLKC_SHIFT);
+		if (!invert)
+			return; // Normal Blink
+		else
+			color_index = ~color_index & 0xf; // Inverted Color Blink
 	}
 
-	uint16_t y = (uint16_t)screen().vpos();
-	const uint16_t cursor_x =  m_cursor_position & 0x3ff;
+	const uint16_t cursor_x = m_cursor_position & 0x3ff;
 	const uint16_t cursor_y = ((m_cursor_position >> 12) & 0x3ff) + m_ica_height;
-	if (y >= cursor_y && y < (cursor_y + 16))
+	const int32_t y = screen().vpos() - cursor_y;
+	const int width = get_screen_width();
+
+	if ((0 <= y) && (y < 16))
 	{
-		const int width = get_screen_width();
-		uint32_t color = s_4bpp_color[m_cursor_control & CURCNT_COLOR];
-		y -= cursor_y;
-		if (m_cursor_control & CURCNT_CUW)
+		const uint32_t color = s_4bpp_color[color_index];
+		const uint8_t resolution = (m_cursor_control & CURCNT_CUW) ? 1 : 2;
+		for (int x = 0; x < 16; x++)
 		{
-			for (int x = cursor_x; x < cursor_x + 64 && x < width; x++)
+			if (BIT(m_cursor_pattern[y], 15 - x))
 			{
-				if (m_cursor_pattern[y] & (1 << (15 - ((x - cursor_x) >> 2))))
+				for (uint32_t j = 0; j < resolution; j++)
 				{
-					scanline[x++] = color;
-					scanline[x++] = color;
-					scanline[x++] = color;
-					scanline[x] = color;
-				}
-			}
-		}
-		else
-		{
-			for (int x = cursor_x; x < cursor_x + 32 && x < width; x++)
-			{
-				if (m_cursor_pattern[y] & (1 << (15 - ((x - cursor_x) >> 1))))
-				{
-					scanline[x++] = color;
-					scanline[x] = color;
+					const uint32_t index = cursor_x + x * resolution + j;
+					if (index < width)
+						scanline[index] = color;
 				}
 			}
 		}
@@ -943,6 +951,21 @@ TIMER_CALLBACK_MEMBER(mcd212_device::ica_tick)
 		m_dca[1] = get_dcp<1>();
 
 	m_ica_timer->adjust(screen().time_until_pos(0, 0));
+
+	// Cursor Blink
+	m_blink_time += 5 + BIT(m_dcr[0], DCR_FD_BIT); // FD bit * 8... Page 4-3 MCD
+	// Adjust the blink time once per frame
+	if (!m_blink_active && (m_blink_time >= ((m_cursor_control & CURCNT_CON) >> CURCNT_CON_SHIFT) * 60))
+	{
+		m_blink_active = true;
+		m_blink_time = 0;
+	}
+	// If blink off time is 0, immediately turn back on.
+	if (m_blink_active && (m_blink_time >= ((m_cursor_control & CURCNT_COF) >> CURCNT_COF_SHIFT) * 60))
+	{
+		m_blink_active = false;
+		m_blink_time = 0;
+	}
 }
 
 TIMER_CALLBACK_MEMBER(mcd212_device::dca_tick)
@@ -980,7 +1003,7 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 			// If PAL and 'Standard' bit set, insert a 20-line border on the top/bottom
 			if ((scanline - m_ica_height < 20) || (scanline >= (m_total_height - 20)))
 			{
-				std::fill_n(out, 768, 0xff101010);
+				std::fill_n(out, 768, s_4bpp_color[0]);
 				draw_line = false;
 			}
 		}
@@ -992,7 +1015,7 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 			// If PAL and 'Standard' bit set, insert a 24px border on the left/right
 			if (!BIT(m_dcr[0], DCR_CF_BIT) || BIT(m_csrw[0], CSR1W_ST_BIT))
 			{
-				std::fill_n(out, 24, 0xff101010);
+				std::fill_n(out, 24, s_4bpp_color[0]);
 				out += 24;
 			}
 
@@ -1121,6 +1144,7 @@ void mcd212_device::device_reset()
 
 	m_ica_height = 32;
 	m_total_height = 312;
+	m_blink_time = 0;
 
 	m_int_callback(CLEAR_LINE);
 
@@ -1169,10 +1193,6 @@ void mcd212_device::device_start()
 		m_dyuv_v_to_r[sw] = (351 * (sw - 128)) / 256;
 	}
 
-	save_item(NAME(m_matte_flag[0]));
-	save_item(NAME(m_matte_flag[1]));
-	save_item(NAME(m_ica_height));
-	save_item(NAME(m_total_height));
 	save_item(NAME(m_csrr));
 	save_item(NAME(m_csrw));
 	save_item(NAME(m_dcr));
@@ -1196,6 +1216,13 @@ void mcd212_device::device_start()
 	save_item(NAME(m_mosaic_hold));
 	save_item(NAME(m_weight_factor[0]));
 	save_item(NAME(m_weight_factor[1]));
+
+	save_item(NAME(m_matte_flag));
+	save_item(NAME(m_ica_height));
+	save_item(NAME(m_total_height));
+
+	save_item(NAME(m_blink_time));
+	save_item(NAME(m_blink_active));
 
 	m_dca_timer = timer_alloc(FUNC(mcd212_device::dca_tick), this);
 	m_dca_timer->adjust(attotime::never);
