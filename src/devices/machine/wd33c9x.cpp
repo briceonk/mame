@@ -539,7 +539,7 @@ void wd33c9x_base_device::indir_w(offs_t offset, uint8_t data)
 uint8_t wd33c9x_base_device::indir_addr_r()
 {
 	// Trick to push the interrupt flag after the fifo is empty to help cps3
-	return m_regs[AUXILIARY_STATUS]; //& 0x01 ? m_regs[AUXILIARY_STATUS] & 0x7f : m_regs[AUXILIARY_STATUS];
+	return m_regs[AUXILIARY_STATUS] & 0x01 ? m_regs[AUXILIARY_STATUS] & 0x7f : m_regs[AUXILIARY_STATUS];
 }
 
 
