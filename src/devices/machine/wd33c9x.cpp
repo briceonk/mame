@@ -539,7 +539,9 @@ void wd33c9x_base_device::indir_w(offs_t offset, uint8_t data)
 uint8_t wd33c9x_base_device::indir_addr_r()
 {
 	// Trick to push the interrupt flag after the fifo is empty to help cps3
-	return m_regs[AUXILIARY_STATUS] & 0x01 ? m_regs[AUXILIARY_STATUS] & 0x7f : m_regs[AUXILIARY_STATUS];
+	// TODO: if modifying the below code is needed, add a config item for using the CPS3 trick or not
+	LOG("(%s) indir_addr_r() = 0x%x\n", machine().describe_context(), m_regs[AUXILIARY_STATUS]);
+	return m_regs[AUXILIARY_STATUS]; // & 0x01 ? m_regs[AUXILIARY_STATUS] & 0x7f : m_regs[AUXILIARY_STATUS];
 }
 
 
@@ -1113,6 +1115,7 @@ void wd33c9x_base_device::step(bool timeout)
 			if (sat) {
 				switch (m_xfr_phase) {
 				case S_PHASE_DATA_IN:
+					LOG("Data in, pushing data 0x%x\n", data);
 					data_fifo_push(data);
 					if ((m_regs[CONTROL] & CONTROL_DM) != CONTROL_DM_POLLED) {
 						set_drq();
