@@ -29,7 +29,7 @@
 #define LOG_REGS        (LOG_READS | LOG_WRITES)
 #define LOG_ALL         (LOG_REGS | LOG_COMMANDS | LOG_ERRORS | LOG_MISC | LOG_LINES | LOG_STATE | LOG_STEP)
 
-#define VERBOSE         (LOG_ALL)
+#define VERBOSE         (LOG_ALL|LOG_GENERAL)
 #include "logmacro.h"
 
 enum register_addresses_e : uint8_t {
@@ -561,7 +561,7 @@ void wd33c9x_base_device::indir_addr_w(uint8_t data)
 
 uint8_t wd33c9x_base_device::indir_reg_r()
 {
-	logerror("indir_reg_r\n");
+	logerror("(%s) indir_reg_r start\n", machine().describe_context());
 	uint8_t ret;
 	switch (m_addr) {
 	case DATA: {
@@ -606,7 +606,7 @@ uint8_t wd33c9x_base_device::indir_reg_r()
 		}
 		break;
 	}
-	logerror("indir_reg_r: 0x%x\n", ret);
+	logerror("(%s) indir_reg_r end: 0x%x\n", machine().describe_context(), ret);
 	return ret;
 }
 
@@ -1459,6 +1459,7 @@ void wd33c9x_base_device::load_transfer_count()
 
 bool wd33c9x_base_device::decrement_transfer_count()
 {
+	LOG("decrement_transfer_count m_transfer_count = 0x%x regs = 0x%x\n", m_transfer_count, m_regs[TRANSFER_COUNT]);
 	if (m_transfer_count == 0) {
 		return true;
 	}
@@ -1467,6 +1468,7 @@ bool wd33c9x_base_device::decrement_transfer_count()
 		// After the completion of any successful transfer,
 		// including commands issued in Single Byte Transfer
 		// mode, the Transfer Count Register will be zero.
+		LOG("decrement_transfer_count hit zero\n");
 		m_regs[TRANSFER_COUNT_MSB] = 0;
 		m_regs[TRANSFER_COUNT] = 0;
 		m_regs[TRANSFER_COUNT_LSB] = 0;
