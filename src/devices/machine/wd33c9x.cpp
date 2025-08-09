@@ -561,6 +561,7 @@ void wd33c9x_base_device::indir_addr_w(uint8_t data)
 
 uint8_t wd33c9x_base_device::indir_reg_r()
 {
+	logerror("indir_reg_r\n");
 	uint8_t ret;
 	switch (m_addr) {
 	case DATA: {
@@ -577,7 +578,10 @@ uint8_t wd33c9x_base_device::indir_reg_r()
 		bool was_full = data_fifo_full();
 		ret = data_fifo_pop();
 		if (data_fifo_empty())
+		{
+			logerror("Fifo empty after read, clearing DBR\n");
 			m_regs[AUXILIARY_STATUS] &= ~AUXILIARY_STATUS_DBR;
+		}
 		if (was_full)
 			step(false);
 		break;
@@ -602,7 +606,7 @@ uint8_t wd33c9x_base_device::indir_reg_r()
 		}
 		break;
 	}
-
+	logerror("indir_reg_r: 0x%x\n", ret);
 	return ret;
 }
 
@@ -648,6 +652,7 @@ void wd33c9x_base_device::indir_reg_w(uint8_t data)
 		if (!(m_regs[AUXILIARY_STATUS] & AUXILIARY_STATUS_DBR)) {
 			fatalerror("%s: The host should never write the data register without DBR set.\n", shortname());
 		}
+		logerror("Clearing DBR due to data write\n");
 		m_regs[AUXILIARY_STATUS] &= ~AUXILIARY_STATUS_DBR;
 		data_fifo_push(data);
 		decrement_transfer_count();
@@ -738,6 +743,7 @@ void wd33c9x_base_device::start_command()
 		m_regs[OWN_ID] = m_command_length;
 		memset(&m_regs[CONTROL], 0, SOURCE_ID - CONTROL);
 		m_regs[COMMAND] = 0;
+		logerror("Clearing DBR due to reset\n");
 		m_regs[AUXILIARY_STATUS] &= ~AUXILIARY_STATUS_DBR;
 		m_mode = MODE_D;
 		data_fifo_reset();
@@ -847,6 +853,7 @@ void wd33c9x_base_device::start_command()
 		if (m_mode != MODE_I) {
 			fatalerror("%s: TRANSFER_INFO command only valid in the Initiator state.", shortname());
 		}
+		logerror("Clearing DBR due to transfer info command\n");
 		m_regs[AUXILIARY_STATUS] &= ~AUXILIARY_STATUS_DBR;
 		set_scsi_state(INIT_XFR);
 		set_command_length(COMMAND_CC_TRANSFER_INFO);
@@ -1139,10 +1146,13 @@ void wd33c9x_base_device::step(bool timeout)
 					break;
 				}
 			} else {
+				logerror("WAIT_SETTLE pushing data\n");
 				data_fifo_push(data);
 				if (m_xfr_phase == S_PHASE_DATA_IN && (m_regs[CONTROL] & CONTROL_DM) != CONTROL_DM_POLLED) {
+					logerror("drq");
 					set_drq();
 				} else {
+					logerror("trxcnt\n");
 					decrement_transfer_count();
 					m_regs[AUXILIARY_STATUS] |= AUXILIARY_STATUS_DBR;
 				}
