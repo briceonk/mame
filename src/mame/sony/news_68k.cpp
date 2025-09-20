@@ -86,6 +86,7 @@ __|              |         |  |ALS05A| |N82077   |   __             6 x 74F00J->
 #include "dmac_0266.h"
 #include "news_hid.h"
 #include "machine/ncr5380.h"
+#include "machine/cxd1185.h"
 
 // video
 #include "screen.h"
@@ -103,15 +104,15 @@ __|              |         |  |ALS05A| |N82077   |   __             6 x 74F00J->
 #define VERBOSE 0
 #include "logmacro.h"
 
-#define GRAPHICS 0
+#define DESKTOP_GRAPHICS 0
 
 
 namespace {
 
-class news_68k_state : public driver_device
+class news_68k_base_state : public driver_device
 {
 public:
-	news_68k_state(machine_config const &mconfig, device_type type, char const *tag)
+	news_68k_base_state(machine_config const &mconfig, device_type type, char const *tag)
 		: driver_device(mconfig, type, tag)
 		, m_cpu(*this, "cpu")
 		, m_ram(*this, "ram")
@@ -120,7 +121,6 @@ public:
 		, m_scc(*this, "scc")
 		, m_net(*this, "net")
 		, m_fdc(*this, "fdc")
-		, m_scsi(*this, "scsi:7:cxd1180")
 		, m_hid(*this, "hid")
 		, m_serial(*this, "serial%u", 0U)
 		, m_irq5(*this, "irq5")
@@ -128,7 +128,7 @@ public:
 		, m_sw1(*this, "SW1")
 		, m_eprom(*this, "eprom")
 		, m_led(*this, "led%u", 0U)
-#if GRAPHICS
+#if DESKTOP_GRAPHICS
 		, m_screen(*this, "screen")
 		, m_ramdac(*this, "ramdac")
 		, m_vram(*this, "vram")
@@ -136,7 +136,6 @@ public:
 	{
 	}
 
-	void nws1580(machine_config &config);
 	void init_common();
 
 protected:
@@ -150,6 +149,7 @@ protected:
 
 	// machine config
 	void common(machine_config &config);
+	void config_scc(machine_config &config, const char *default_device_name);
 
 	enum irq_number : unsigned
 	{
@@ -170,20 +170,18 @@ protected:
 
 	u32 bus_error_r();
 
-#if GRAPHICS
+#if DESKTOP_GRAPHICS
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect) { return 0; }
 #endif
 
-private:
 	// devices
 	required_device<m68030_device> m_cpu;
 	required_device<ram_device> m_ram;
-	required_device<dmac_0266_device> m_dma;
+	required_device<dmac_0266_device> m_dma; // TODO: move dma config to subcls b/c it refers to different scctrl?
 	required_device<m48t02_device> m_rtc;
 	required_device<z80scc_device> m_scc;
 	required_device<am7990_device> m_net;
-	required_device<upd72067_device> m_fdc;
-	required_device<cxd1180_device> m_scsi;
+	required_device<upd765_family_device> m_fdc;
 	required_device<news_hid_hle_device> m_hid;
 
 	required_device_array<rs232_port_device, 2> m_serial;
@@ -196,7 +194,7 @@ private:
 	std::unique_ptr<u16[]> m_net_ram;
 	output_finder<2> m_led;
 
-#if GRAPHICS
+#if DESKTOP_GRAPHICS
 	required_device<screen_device> m_screen;
 	required_device<bt458_device> m_ramdac;
 	required_device<ram_device> m_vram;
@@ -211,13 +209,56 @@ private:
 	bool m_parity_irq_state;
 };
 
-void news_68k_state::machine_start()
+class news_68k_desktop_state : public news_68k_base_state
+{
+public:
+	news_68k_desktop_state(machine_config const &mconfig, device_type type, char const *tag)
+		: news_68k_base_state(mconfig, type, tag)
+		, m_scsi(*this, "scsi:7:cxd1180")
+	{
+	}
+
+	void nws1580(machine_config &config) ATTR_COLD;
+
+protected:
+	void desktop_cpu_map(address_map &map);
+
+	required_device<cxd1180_device> m_scsi;
+};
+
+class news_68k_laptop_state : public news_68k_base_state
+{
+public:
+	news_68k_laptop_state(machine_config const &mconfig, device_type type, char const *tag)
+	: news_68k_base_state(mconfig, type, tag)
+	, m_scsi(*this, "scsi:7:cxd1185")
+	, m_lcd(*this, "lcd")
+	, m_vram(*this, "vram")
+	{
+	}
+
+	void nws1250(machine_config &config) ATTR_COLD;
+	virtual void machine_start() override ATTR_COLD;
+
+protected:
+	void laptop_cpu_map(address_map &map);
+	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect);
+
+	required_device<cxd1185_device> m_scsi;
+	required_device<screen_device> m_lcd;
+	required_shared_ptr<u32> m_vram;
+
+	bool m_lcd_enable = false;
+	bool m_lcd_dim = false;
+};
+
+void news_68k_base_state::machine_start()
 {
 	m_led.resolve();
 
 	m_net_ram = std::make_unique<u16[]>(8192);
 
-	m_timer = timer_alloc(FUNC(news_68k_state::timer), this);
+	m_timer = timer_alloc(FUNC(news_68k_base_state::timer), this);
 
 	m_intst = 0;
 	for (bool &int_state : m_int_state)
@@ -227,26 +268,44 @@ void news_68k_state::machine_start()
 	m_parity_irq_state = false;
 }
 
-void news_68k_state::machine_reset()
+void news_68k_laptop_state::machine_start()
+{
+	news_68k_base_state::machine_start();
+
+	save_item(NAME(m_lcd_enable));
+	save_item(NAME(m_lcd_dim));
+	m_lcd_enable = false;
+	m_lcd_dim = false;
+}
+
+void news_68k_base_state::machine_reset()
 {
 	// eprom is mapped at 0 after reset
 	m_cpu->space(0).install_rom(0x00000000, 0x0000ffff, m_eprom);
 }
 
-void news_68k_state::init_common()
+void news_68k_base_state::init_common()
 {
 	// HACK: hardwire the rate
 	m_fdc->set_rate(500000);
 }
 
-void news_68k_state::cpu_map(address_map &map)
+void news_68k_base_state::cpu_map(address_map &map)
 {
+
+}
+
+void news_68k_desktop_state::desktop_cpu_map(address_map &map)
+{
+	cpu_map(map);
+	map(0xe0cc0000, 0xe0cc0007).m(m_scsi, FUNC(ncr5380_device::map));
+
+		// Below this line is original
 	map(0xe0000000, 0xe000ffff).rom().region("eprom", 0);
 
 	// 0xe0c40000 // centronics
 	map(0xe0c80000, 0xe0c80003).m(m_fdc, FUNC(upd72067_device::map));
 	map(0xe0c80100, 0xe0c80100).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w));
-	map(0xe0cc0000, 0xe0cc0007).m(m_scsi, FUNC(ncr5380_device::map));
 
 	map(0xe0d00000, 0xe0d00007).m(m_hid, FUNC(news_hid_hle_device::map_68k));
 	map(0xe0d40000, 0xe0d40003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
@@ -262,7 +321,7 @@ void news_68k_state::cpu_map(address_map &map)
 	// e0f40000
 	//map(0xe0f40000, 0xe0f40000).lr8([]() { return 0xfb; }, "scc_ridsr_r");
 
-	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_state::timer_w));
+	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_desktop_state::timer_w));
 	map(0xe1080000, 0xe1080000).lw8([this](u8 data) { LOG("parity check enable 0x%02x\n", data); }, "parity_check_enable_w");
 	map(0xe1180000, 0xe1180000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ2, bool(data)); }, "irq2_w");
 	map(0xe1200000, 0xe1200000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer()); }, "ram_enable");
@@ -278,8 +337,8 @@ void news_68k_state::cpu_map(address_map &map)
 	map(0xe1c00200, 0xe1c00200).lrw8([this]() { return m_intst; }, "intst_r", [this](u8 data) { irq_w<FDC>(0); m_parity_vector = data; }, "parity_vector_w");
 
 	// external I/O
-	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_state::bus_error_r));
-#if GRAPHICS
+	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_desktop_state::bus_error_r));
+#if DESKTOP_GRAPHICS
 	// POPC
 	//map(0xf0fc0000, 0xf0fc0003).unmaprw();
 	// f0fc0000 & 0x40 == 0x00 -> popm
@@ -305,7 +364,12 @@ void news_68k_state::cpu_map(address_map &map)
 	// 0xf0600000 nwb225krom_base
 }
 
-void news_68k_state::cpu_autovector_map(address_map &map)
+void news_68k_laptop_state::laptop_cpu_map(address_map &map)
+{
+	cpu_map(map);
+}
+
+void news_68k_base_state::cpu_autovector_map(address_map &map)
 {
 	map(0xfffffff3, 0xfffffff3).lr8(NAME([]() { return m68000_base_device::autovector(1); }));
 	map(0xfffffff5, 0xfffffff5).lr8(NAME([]() { return m68000_base_device::autovector(2); }));
@@ -316,7 +380,7 @@ void news_68k_state::cpu_autovector_map(address_map &map)
 	map(0xffffffff, 0xffffffff).lr8(NAME([this]() { return m_parity_irq_state ? m_parity_vector : m68000_base_device::autovector(7); }));
 }
 
-template <news_68k_state::irq_number Number> void news_68k_state::irq_w(int state)
+template <news_68k_base_state::irq_number Number> void news_68k_base_state::irq_w(int state)
 {
 	LOG("irq number %d state %d\n", Number, state);
 
@@ -328,7 +392,7 @@ template <news_68k_state::irq_number Number> void news_68k_state::irq_w(int stat
 	int_check();
 }
 
-void news_68k_state::int_check()
+void news_68k_base_state::int_check()
 {
 	// TODO: assume 43334443, masking?
 	static int const int_line[] = { INPUT_LINE_IRQ3, INPUT_LINE_IRQ4 };
@@ -346,7 +410,7 @@ void news_68k_state::int_check()
 	}
 }
 
-void news_68k_state::timer_w(u8 data)
+void news_68k_base_state::timer_w(u8 data)
 {
 	LOG("timer_w 0x%02x\n", data);
 
@@ -356,15 +420,39 @@ void news_68k_state::timer_w(u8 data)
 		m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
 }
 
-void news_68k_state::timer(s32 param)
+void news_68k_base_state::timer(s32 param)
 {
 	m_cpu->set_input_line(INPUT_LINE_IRQ6, ASSERT_LINE);
 }
 
-u32 news_68k_state::bus_error_r()
+u32 news_68k_base_state::bus_error_r()
 {
 	if (!machine().side_effects_disabled())
 		m_cpu->set_input_line(M68K_LINE_BUSERROR, ASSERT_LINE);
+
+	return 0;
+}
+
+u32 news_68k_laptop_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect)
+{
+	if (!m_lcd_enable)
+		return 0;
+
+	rgb_t const black = rgb_t::black();
+	rgb_t const white = m_lcd_dim ? rgb_t(191, 191, 191) : rgb_t::white();
+
+	u32 const *pixel_pointer = m_vram;
+
+	for (int y = screen.visible_area().min_y; y <= screen.visible_area().max_y; y++)
+	{
+		for (int x = screen.visible_area().min_x; x <= screen.visible_area().max_x; x += 32)
+		{
+			u32 const pixel_data = *pixel_pointer++;
+
+			for (unsigned i = 0; i < 32; i++)
+				bitmap.pix(y, x + i) = BIT(pixel_data, 31 - i) ? black : white;
+		}
+	}
 
 	return 0;
 }
@@ -375,20 +463,8 @@ static void news_scsi_devices(device_slot_interface &device)
 	device.option_add("cdrom", NSCSI_CDROM);
 }
 
-void news_68k_state::common(machine_config &config)
+void news_68k_base_state::common(machine_config &config)
 {
-	M68030(config, m_cpu, 50_MHz_XTAL / 2);
-	m_cpu->set_addrmap(AS_PROGRAM, &news_68k_state::cpu_map);
-	m_cpu->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_68k_state::cpu_autovector_map);
-
-	// 16 SIMM slots for RAM arranged as two groups of 8 slots, with each bank
-	// corresponding to a pair of slots in each group; first bank soldered in
-	RAM(config, m_ram);
-	m_ram->set_default_size("8M");
-	// TODO: assume only 1M modules are supported
-	m_ram->set_extra_options("4M,12M,16M");
-	m_ram->set_default_value(0);
-
 	M48T02(config, m_rtc);
 
 	DMAC_0266(config, m_dma, 0);
@@ -397,47 +473,16 @@ void news_68k_state::common(machine_config &config)
 	INPUT_MERGER_ANY_HIGH(config, m_irq5);
 	m_irq5->output_handler().set_inputline(m_cpu, INPUT_LINE_IRQ5);
 
-	SCC85C30(config, m_scc, 3993600);
-	m_scc->out_int_callback().set(
-		[this](int state)
-		{
-			m_scc_irq_state = bool(state);
-			m_irq5->in_w<2>(state);
-		});
-
-	// scc channel A
-	RS232_PORT(config, m_serial[0], default_rs232_devices, GRAPHICS ? nullptr : "terminal");
-	m_serial[0]->cts_handler().set(m_scc, FUNC(z80scc_device::ctsa_w));
-	m_serial[0]->dcd_handler().set(m_scc, FUNC(z80scc_device::dcda_w));
-	m_serial[0]->rxd_handler().set(m_scc, FUNC(z80scc_device::rxa_w));
-	m_scc->out_rtsa_callback().set(m_serial[0], FUNC(rs232_port_device::write_rts));
-	m_scc->out_txda_callback().set(m_serial[0], FUNC(rs232_port_device::write_txd));
-
-	// scc channel B
-	RS232_PORT(config, m_serial[1], default_rs232_devices, nullptr);
-	m_serial[1]->cts_handler().set(m_scc, FUNC(z80scc_device::ctsb_w));
-	m_serial[1]->dcd_handler().set(m_scc, FUNC(z80scc_device::dcdb_w));
-	m_serial[1]->rxd_handler().set(m_scc, FUNC(z80scc_device::rxb_w));
-	m_scc->out_rtsb_callback().set(m_serial[1], FUNC(rs232_port_device::write_rts));
-	m_scc->out_txdb_callback().set(m_serial[1], FUNC(rs232_port_device::write_txd));
-
 	AM7990(config, m_net);
-	m_net->intr_out().set(FUNC(news_68k_state::irq_w<LANCE>)).invert();
+	m_net->intr_out().set(FUNC(news_68k_base_state::irq_w<LANCE>)).invert();
 	m_net->dma_in().set([this](offs_t offset) { return m_net_ram[(offset >> 1) & 0x1fff]; });
 	m_net->dma_out().set([this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[(offset >> 1) & 0x1fff]); });
-
-	INPUT_MERGER_ANY_HIGH(config, m_irq7);
-	m_irq7->output_handler().set_inputline(m_cpu, INPUT_LINE_IRQ7);
-
-	UPD72067(config, m_fdc, 16_MHz_XTAL);
-	m_fdc->intrq_wr_callback().set(FUNC(news_68k_state::irq_w<FDC>));
-	m_fdc->drq_wr_callback().set(m_irq7, FUNC(input_merger_device::in_w<0>));
-	FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
 
 	// scsi bus and devices
 	NSCSI_BUS(config, "scsi");
 
 	/*
+	 * NWS-1580:
 	 * CDC WREN V HH 94221-5 (5.25" half-height SCSI-1 single-ended)
 	 * 1544 cylinders, 5 heads, 52 sectors/cylinder, ~170MiB formatted
 	 *
@@ -452,13 +497,70 @@ void news_68k_state::common(machine_config &config)
 	NSCSI_CONNECTOR(config, "scsi:5", news_scsi_devices, nullptr);
 	NSCSI_CONNECTOR(config, "scsi:6", news_scsi_devices, nullptr);
 
+	NEWS_HID_HLE(config, m_hid);
+
+	SOFTWARE_LIST(config, "software_list").set_original("sony_news").set_filter("CISC");
+}
+
+void news_68k_base_state::config_scc(machine_config &config, const char *default_device_name)
+{
+	SCC85C30(config, m_scc, 3993600);
+	m_scc->out_int_callback().set(
+		[this](int state)
+		{
+			m_scc_irq_state = bool(state);
+			m_irq5->in_w<2>(state);
+		});
+
+	// scc channel A
+	RS232_PORT(config, m_serial[0], default_rs232_devices, default_device_name);
+	m_serial[0]->cts_handler().set(m_scc, FUNC(z80scc_device::ctsa_w));
+	m_serial[0]->dcd_handler().set(m_scc, FUNC(z80scc_device::dcda_w));
+	m_serial[0]->rxd_handler().set(m_scc, FUNC(z80scc_device::rxa_w));
+	m_scc->out_rtsa_callback().set(m_serial[0], FUNC(rs232_port_device::write_rts));
+	m_scc->out_txda_callback().set(m_serial[0], FUNC(rs232_port_device::write_txd));
+
+	// scc channel B
+	RS232_PORT(config, m_serial[1], default_rs232_devices, nullptr);
+	m_serial[1]->cts_handler().set(m_scc, FUNC(z80scc_device::ctsb_w));
+	m_serial[1]->dcd_handler().set(m_scc, FUNC(z80scc_device::dcdb_w));
+	m_serial[1]->rxd_handler().set(m_scc, FUNC(z80scc_device::rxb_w));
+	m_scc->out_rtsb_callback().set(m_serial[1], FUNC(rs232_port_device::write_rts));
+	m_scc->out_txdb_callback().set(m_serial[1], FUNC(rs232_port_device::write_txd));
+}
+
+void news_68k_desktop_state::nws1580(machine_config &config)
+{
+	M68030(config, m_cpu, 50_MHz_XTAL / 2);
+	m_cpu->set_addrmap(AS_PROGRAM, &news_68k_desktop_state::desktop_cpu_map);
+	m_cpu->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_68k_desktop_state::cpu_autovector_map);
+
+	// 16 SIMM slots for RAM arranged as two groups of 8 slots, with each bank
+	// corresponding to a pair of slots in each group; first bank soldered in
+	RAM(config, m_ram);
+	m_ram->set_default_size("8M");
+	// TODO: assume only 1M modules are supported
+	m_ram->set_extra_options("4M,12M,16M");
+	m_ram->set_default_value(0);
+
+	common(config);
+	config_scc(config, "terminal");
+
+	INPUT_MERGER_ANY_HIGH(config, m_irq7);
+	m_irq7->output_handler().set_inputline(m_cpu, INPUT_LINE_IRQ7);
+
+	UPD72067(config, m_fdc, 16_MHz_XTAL);
+	m_fdc->intrq_wr_callback().set(FUNC(news_68k_desktop_state::irq_w<FDC>));
+	m_fdc->drq_wr_callback().set(m_irq7, FUNC(input_merger_device::in_w<0>));
+	FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
+
 	// scsi host adapter
 	NSCSI_CONNECTOR(config, "scsi:7").option_set("cxd1180", CXD1180).machine_config(
 		[this](device_t *device)
 		{
-			cxd1180_device &adapter = downcast<cxd1180_device &>(*device);
+			auto &adapter = downcast<cxd1180_device &>(*device);
 
-			adapter.irq_handler().set(*this, FUNC(news_68k_state::irq_w<SCSI>));
+			adapter.irq_handler().set(*this, FUNC(news_68k_desktop_state::irq_w<SCSI>));
 			adapter.irq_handler().append(m_dma, FUNC(dmac_0266_device::eop_w));
 			adapter.drq_handler().set(m_dma, FUNC(dmac_0266_device::req_w));
 
@@ -466,15 +568,13 @@ void news_68k_state::common(machine_config &config)
 			subdevice<dmac_0266_device>(":dma")->dma_w_cb().set(adapter, FUNC(cxd1180_device::dma_w));
 		});
 
-	NEWS_HID_HLE(config, m_hid);
-
-#if GRAPHICS
+#if DESKTOP_GRAPHICS
 	m_hid->irq_out<news_hid_hle_device::KEYBOARD>().set(m_irq5, FUNC(input_merger_device::in_w<0>));
 	m_hid->irq_out<news_hid_hle_device::MOUSE>().set(m_irq5, FUNC(input_merger_device::in_w<1>));
 
 	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
 	m_screen->set_raw(64.0_MHz_XTAL, 1024, 0, 1024, 768, 0, 768);
-	m_screen->set_screen_update(FUNC(news_68k_state::screen_update));
+	m_screen->set_screen_update(FUNC(news_68k_base_state::screen_update));
 
 	// AM81C458-80JC
 	BT458(config, m_ramdac, 64.0_MHz_XTAL);
@@ -484,13 +584,48 @@ void news_68k_state::common(machine_config &config)
 	m_vram->set_default_size("1MiB");
 	m_vram->set_default_value(0);
 #endif
-
-	SOFTWARE_LIST(config, "software_list").set_original("sony_news").set_filter("CISC");
 }
 
-void news_68k_state::nws1580(machine_config &config)
+void news_68k_laptop_state::nws1250(machine_config &config)
 {
+	M68030(config, m_cpu, 50_MHz_XTAL / 2);
+	m_cpu->set_addrmap(AS_PROGRAM, &news_68k_laptop_state::laptop_cpu_map);
+	m_cpu->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_68k_laptop_state::cpu_autovector_map);
+
+	RAM(config, m_ram);
+	m_ram->set_default_size("8M");
+	m_ram->set_extra_options("4M,12M");
+	m_ram->set_default_value(0);
+
 	common(config);
+	config_scc(config, nullptr);
+
+	INPUT_MERGER_ANY_HIGH(config, m_irq7);
+	m_irq7->output_handler().set_inputline(m_cpu, INPUT_LINE_IRQ7);
+
+	N82077AA(config, m_fdc, 16_MHz_XTAL);
+	m_fdc->intrq_wr_callback().set(FUNC(news_68k_laptop_state::irq_w<FDC>));
+	m_fdc->drq_wr_callback().set(m_irq7, FUNC(input_merger_device::in_w<0>));
+	FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
+
+	// scsi host adapter
+	NSCSI_CONNECTOR(config, "scsi:7").option_set("cxd1185", CXD1185).machine_config(
+		[this](device_t *device)
+		{
+			auto &adapter = downcast<cxd1185_device &>(*device);
+
+			adapter.irq_out_cb().set(*this, FUNC(news_68k_laptop_state::irq_w<SCSI>));
+			adapter.irq_out_cb().append(m_dma, FUNC(dmac_0266_device::eop_w));
+			adapter.drq_out_cb().set(m_dma, FUNC(dmac_0266_device::req_w));
+
+			subdevice<dmac_0266_device>(":dma")->dma_r_cb().set(adapter, FUNC(cxd1185_device::dma_r));
+			subdevice<dmac_0266_device>(":dma")->dma_w_cb().set(adapter, FUNC(cxd1185_device::dma_w));
+		});
+
+	// Integrated LCD panel
+	SCREEN(config, m_lcd, SCREEN_TYPE_LCD);
+	m_lcd->set_raw(52416000, 1120, 0, 1120, 780, 0, 780);
+	m_lcd->set_screen_update(FUNC(news_68k_laptop_state::screen_update));
 }
 
 static INPUT_PORTS_START(nws15x0)
@@ -549,6 +684,6 @@ ROM_END
 } // anonymous namespace
 
 
-//   YEAR  NAME     PARENT  COMPAT  MACHINE  INPUT    CLASS           INIT         COMPANY  FULLNAME    FLAGS
-COMP(1988, nws1580, 0,      0,      nws1580, nws15x0, news_68k_state, init_common, "Sony",  "NWS-1580", MACHINE_NOT_WORKING)
-COMP(1990, nws1250, 0,      0,      nws1580, nws15x0, news_68k_state, init_common, "Sony",  "NWS-1250", MACHINE_NOT_WORKING)
+//   YEAR  NAME     PARENT  COMPAT  MACHINE  INPUT    CLASS                   INIT         COMPANY  FULLNAME    FLAGS
+COMP(1988, nws1580, 0,      0,      nws1580, nws15x0, news_68k_desktop_state, init_common, "Sony",  "NWS-1580", MACHINE_NOT_WORKING)
+COMP(1990, nws1250, 0,      0,      nws1250, nws15x0, news_68k_laptop_state,  init_common, "Sony",  "NWS-1250", MACHINE_NOT_WORKING)
