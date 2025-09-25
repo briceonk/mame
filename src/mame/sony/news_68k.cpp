@@ -246,7 +246,7 @@ protected:
 
 	required_device<cxd1185_device> m_scsi;
 	required_device<screen_device> m_lcd;
-	required_shared_ptr<u32> m_vram;
+	optional_shared_ptr<u32> m_vram; // TODO: make required
 
 	bool m_lcd_enable = false;
 	bool m_lcd_dim = false;
@@ -281,7 +281,7 @@ void news_68k_laptop_state::machine_start()
 void news_68k_base_state::machine_reset()
 {
 	// eprom is mapped at 0 after reset
-	m_cpu->space(0).install_rom(0x00000000, 0x0000ffff, m_eprom);
+	m_cpu->space(0).install_rom(0x00000000, 0x0001ffff, m_eprom);
 }
 
 void news_68k_base_state::init_common()
@@ -367,6 +367,63 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 {
 	cpu_map(map);
+
+	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
+	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
+	map(0xe1680000, 0xe1680000).lr8([this] { return u8(m_sw1->read()); }, "sw1_r");
+	// // above this line is 100% legit
+	map(0xe1040000, 0xe1040000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), m_ram->pointer()); }, "ram_enable");
+	map(0xe1500000, 0xe1500003); // TODO: what is this?
+	map(0xe1080000, 0xe1080000); // TODO: ditto??
+
+	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
+
+	map(0xe1780000, 0xe1780003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
+
+	// above this line is 50% legit
+
+	// map(0xe15c0000, 0xe15c0000).m(m_fdc, FUNC(n82077aa_device::map));
+	// map(0xe15c0100, 0xe15c0100).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w)); // wrong, probably?
+
+	//
+	// // below this line is wrong or unverified
+	// map(0x10200000, 0x1021ffff).ram().share("vram"); //.mirror(0xa0000000); // def wrong
+	// map(0xe0cc0000, 0xe0cc0007).m(m_scsi, FUNC(cxd1185_device::map));
+
+
+
+	// 0xe0c40000 // centronics
+
+	// map(0xe0d00000, 0xe0d00007).m(m_hid, FUNC(news_hid_hle_device::map_68k));
+	//
+	//
+	// map(0xe0dc0000, 0xe0dc0000).lw8([this](u8 data) { m_led[0] = BIT(data, 0); m_led[1] = BIT(data, 1); }, "led_w");
+	//
+	// map(0xe0e00000, 0xe0e03fff).lrw16(
+	// 	[this](offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
+	// 	[this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
+	// map(0xe0e80000, 0xe0e80017).m(m_dma, FUNC(dmac_0266_device::map));
+	// // e0ec0000 // sound board
+	// map(0xe0f00000, 0xe0f00003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
+	// // e0f40000
+	// //map(0xe0f40000, 0xe0f40000).lr8([]() { return 0xfb; }, "scc_ridsr_r");
+	//
+	// map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::timer_w));
+	// map(0xe1080000, 0xe1080000).lw8([this](u8 data) { LOG("parity check enable 0x%02x\n", data); }, "parity_check_enable_w");
+	// map(0xe1180000, 0xe1180000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ2, bool(data)); }, "irq2_w");
+	// map(0xe1200000, 0xe1200000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer()); }, "ram_enable");
+	// map(0xe1280000, 0xe1280000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ1, bool(data)); }, "ast_w");
+	// map(0xe1300000, 0xe1300000).lw8([this](u8 data) { LOG("cache enable 0x%02x (%s)\n", data, machine().describe_context()); }, "cache_enable_w");
+	// // 0xe1380000 // power on/off
+	// map(0xe1900000, 0xe1900000).lw8([this](u8 data) { LOG("cache clear 0x%02x\n", data); }, "cache_clear_w");
+	// map(0xe1a00000, 0xe1a00000).lw8([this](u8 data) { LOG("parity interrupt clear 0x%02x\n", data); }, "parity_interrupt_clear_w");
+	// // 0xe1b00000 // fdc vfo external/internal
+	//
+	// // HACK: disable fdc irq for NetBSD
+	// map(0xe1c00200, 0xe1c00200).lrw8([this]() { return m_intst; }, "intst_r", [this](u8 data) { irq_w<FDC>(0); m_parity_vector = data; }, "parity_vector_w");
+	//
+	// // external I/O
+	// map(0xf0000000, 0xffffffff).r(FUNC(news_68k_laptop_state::bus_error_r));
 }
 
 void news_68k_base_state::cpu_autovector_map(address_map &map)
@@ -504,7 +561,7 @@ void news_68k_base_state::common(machine_config &config)
 
 void news_68k_base_state::config_scc(machine_config &config, const char *default_device_name)
 {
-	SCC85C30(config, m_scc, 3993600);
+	SCC85C30(config, m_scc, 4'915'200); // 3993600); TODO: configure clock as well
 	m_scc->out_int_callback().set(
 		[this](int state)
 		{
@@ -598,7 +655,7 @@ void news_68k_laptop_state::nws1250(machine_config &config)
 	m_ram->set_default_value(0);
 
 	common(config);
-	config_scc(config, nullptr);
+	config_scc(config, "terminal"); // TODO: nullptr);
 
 	INPUT_MERGER_ANY_HIGH(config, m_irq7);
 	m_irq7->output_handler().set_inputline(m_cpu, INPUT_LINE_IRQ7);
@@ -653,22 +710,27 @@ INPUT_PORTS_END
 
 ROM_START(nws1250)
 	ROM_REGION32_BE(0x20000, "eprom", 0)
-	ROM_SYSTEM_BIOS(0, "nws1580", "NWS-1250 v2.0a")
-	ROMX_LOAD("nws-1200_ver_2.0a_9010.ic2", 0x00000, 0x20000, CRC(87eca9d2) SHA1(235585a55bc2b3206cfec532852526a638eccad2), ROM_BIOS(0))
+	// ROM_SYSTEM_BIOS(0, "nws1250", "NWS-1250 v2.0a")
+	// ROMX_LOAD("nws-1200_ver_2.0a_9010.ic2", 0x00000, 0x20000, CRC(87eca9d2) SHA1(235585a55bc2b3206cfec532852526a638eccad2), ROM_BIOS(0))
+	ROM_SYSTEM_BIOS(0, "nws1250", "NWS-1250 v2.0") // TODO: double-check version #
+	ROM_LOAD16_WORD_SWAP("nws1200_9006_am27c1024.bin", 0x00000, 0x20000, CRC(87eca9d2) SHA1(235585a55bc2b3206cfec532852526a638eccad2))
 
 	// AM27S21PC PROM
 	ROM_REGION32_BE(0x100, "idrom", 0)
-	ROM_LOAD("n1250_50292_am27s21pc.ic36", 0x000, 0x100, NO_DUMP)
+	//ROM_LOAD("n1250_50292_am27s21pc.ic36", 0x000, 0x100, NO_DUMP)
+	ROM_LOAD("fake-idrom.bin", 0x000, 0x100, BAD_DUMP)
 
 	// 2 x MB834200A (mask ROM)
 	ROM_REGION32_BE(0x100000, "krom", ROMREGION_ERASEFF)
-	ROM_LOAD64_BYTE("mb834200a-20_051_aa_9020_g07.ic1",  0x00000, 0x20000, NO_DUMP)
-	ROM_LOAD64_BYTE("mb834200a-20_052_aa_9002_g02.ic13", 0x00001, 0x20000, NO_DUMP)
+	// ROM_LOAD64_BYTE("mb834200a-20_051_aa_9020_g07.ic1",  0x00000, 0x20000, NO_DUMP)
+	// ROM_LOAD64_BYTE("mb834200a-20_052_aa_9002_g02.ic13", 0x00001, 0x20000, NO_DUMP)
+	ROM_LOAD64_BYTE("mb834200b_U44.BIN", 0x00000, 0x20000, NO_DUMP)
+	ROM_LOAD64_BYTE("mb834200b_U45.BIN", 0x00001, 0x20000, NO_DUMP)
 ROM_END
 
 ROM_START(nws1580)
 	ROM_REGION32_BE(0x10000, "eprom", 0)
-	ROM_SYSTEM_BIOS(0, "nws1580", "NWS-1580 v1.3")
+	ROM_SYSTEM_BIOS(0, "nws1580", "SONY NET WORK STATION MC68030 Monitor Release 1.3")
 	ROMX_LOAD("pws-1500__ver_1.3__8906.bin", 0x00000, 0x10000, CRC(76395ad9) SHA1(c2ae00218c23cef6519a4d7c74ac2c552790dfd4), ROM_BIOS(0))
 
 	// MB7114 256x4 TTL PROM
