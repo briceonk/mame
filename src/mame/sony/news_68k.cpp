@@ -390,7 +390,7 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 
 	//
 	// // below this line is wrong or unverified
-	map(0xe2000000, 0xe21fffff).rom().region("krom", 0);
+	map(0xe2000000, 0xe20fffff).rom().region("krom", 0);
 	map(0xe1500002, 0xe1900002).lw8([this] (u32 data) { m_lcd_enable = bool(data); }, "lcd_enable_w");
 	map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
 	map(0xe4000000, 0xe401ffff).ram().share("vram");
@@ -721,12 +721,7 @@ static INPUT_PORTS_START(nws12x0)
 	PORT_START("SW1")
 	PORT_DIPNAME(0x07, 0x02, "Display") PORT_DIPLOCATION("SW1:1,2,3")
 	PORT_DIPSETTING(0x07, "Console")
-	PORT_DIPSETTING(0x06, "Six")
-	PORT_DIPSETTING(0x05, "Five")
-	PORT_DIPSETTING(0x04, "Four")
-	PORT_DIPSETTING(0x03, "Three")
 	PORT_DIPSETTING(0x02, "LCD")
-	PORT_DIPSETTING(0x01, "One")
 	PORT_DIPSETTING(0x00, "Autoselect")
 
 	PORT_DIPNAME(0x08, 0x08, "Boot Device") PORT_DIPLOCATION("SW1:4")
@@ -757,11 +752,11 @@ ROM_START(nws1250)
 	ROM_LOAD("idrom.bin", 0x000, 0x100, CRC(8cf47e35) SHA1(3eef8168ffb8f7879bcbac9e8fee2115a191ae83) BAD_DUMP)
 
 	// 2 x MB834200A (mask ROM)
-	ROM_REGION32_BE(0x200000, "krom", ROMREGION_ERASEFF)
+	ROM_REGION32_BE(0x100000, "krom", ROMREGION_ERASEFF)
 	// ROM_LOAD64_BYTE("mb834200a-20_051_aa_9020_g07.ic1",  0x00000, 0x20000, NO_DUMP)
 	// ROM_LOAD64_BYTE("mb834200a-20_052_aa_9002_g02.ic13", 0x00001, 0x20000, NO_DUMP)
-	ROM_LOAD64_WORD("mb834200b_u44.bin", 0x00000, 0x80000, CRC(6a50162a) SHA1(92383c3ad7aaa7b2f9c8cf781c6dcddffe7b9af8))
-	ROM_LOAD64_WORD("mb834200b_u45.bin", 0x00004, 0x80000, CRC(f2886c9b) SHA1(76363bb7ef884bcf51c50ac56963d513fe776c2e))
+	ROM_LOAD32_DWORD("mb834200b_u44.bin", 0x00000, 0x80000, CRC(6a50162a) SHA1(92383c3ad7aaa7b2f9c8cf781c6dcddffe7b9af8))
+	ROM_LOAD32_DWORD("mb834200b_u45.bin", 0x80000, 0x80000, CRC(f2886c9b) SHA1(76363bb7ef884bcf51c50ac56963d513fe776c2e))
 ROM_END
 
 ROM_START(nws1580)
