@@ -128,11 +128,6 @@ public:
 		, m_sw1(*this, "SW1")
 		, m_eprom(*this, "eprom")
 		, m_led(*this, "led%u", 0U)
-#if DESKTOP_GRAPHICS
-		, m_screen(*this, "screen")
-		, m_ramdac(*this, "ramdac")
-		, m_vram(*this, "vram")
-#endif
 	{
 	}
 
@@ -170,10 +165,6 @@ protected:
 
 	u32 bus_error_r();
 
-#if DESKTOP_GRAPHICS
-	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect) { return 0; }
-#endif
-
 	// devices
 	required_device<m68030_device> m_cpu;
 	required_device<ram_device> m_ram;
@@ -194,12 +185,6 @@ protected:
 	std::unique_ptr<u16[]> m_net_ram;
 	output_finder<2> m_led;
 
-#if DESKTOP_GRAPHICS
-	required_device<screen_device> m_screen;
-	required_device<bt458_device> m_ramdac;
-	required_device<ram_device> m_vram;
-#endif
-
 	emu_timer *m_timer;
 
 	u8 m_intst;
@@ -215,6 +200,11 @@ public:
 	news_68k_desktop_state(machine_config const &mconfig, device_type type, char const *tag)
 		: news_68k_base_state(mconfig, type, tag)
 		, m_scsi(*this, "scsi:7:cxd1180")
+#if DESKTOP_GRAPHICS
+		, m_screen(*this, "screen")
+		, m_ramdac(*this, "ramdac")
+		, m_vram(*this, "vram")
+#endif
 	{
 	}
 
@@ -223,7 +213,18 @@ public:
 protected:
 	void desktop_cpu_map(address_map &map);
 
+#if DESKTOP_GRAPHICS
+	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect) { return 0; }
+#endif
+
 	required_device<cxd1180_device> m_scsi;
+
+#if DESKTOP_GRAPHICS
+	// TODO: some (but not all) of this can be consolidated with the laptop state later
+	required_device<screen_device> m_screen;
+	required_device<bt458_device> m_ramdac;
+	required_device<ram_device> m_vram;
+#endif
 };
 
 class news_68k_laptop_state : public news_68k_base_state
@@ -246,7 +247,7 @@ protected:
 
 	required_device<cxd1185_device> m_scsi;
 	required_device<screen_device> m_lcd;
-	optional_shared_ptr<u32> m_vram; // TODO: make required when I am done debugging
+	required_shared_ptr<u32> m_vram;
 
 	bool m_lcd_enable = false;
 	bool m_lcd_dim = false;
@@ -369,19 +370,21 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	cpu_map(map);
 
 	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
-	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
-	map(0xe1680000, 0xe1680000).lr8([this] { return u8(m_sw1->read()); }, "sw1_r");
+
 	map(0xe1240000, 0xe1240007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_keyboard));
 	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
+	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
+	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
+	map(0xe1680000, 0xe1680000).lr8([this] { return u8(m_sw1->read()); }, "sw1_r");
+	map(0xe1780000, 0xe1780003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
 
 	// // above this line is 100% legit
 	map(0xe1040000, 0xe1040000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), m_ram->pointer()); }, "ram_enable"); // guess
 	map(0xe1500000, 0xe1500003); // TODO: what is this?
 	map(0xe1080000, 0xe1080000); // TODO: ditto??
 
-	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
-
-	map(0xe1780000, 0xe1780003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
+	map(0xe2000000, 0xe20fffff).rom().region("krom", 0);
+	map(0xe4000000, 0xe401ffff).ram().share("vram");
 
 	// above this line is 50% legit
 
@@ -390,10 +393,8 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 
 	//
 	// // below this line is wrong or unverified
-	map(0xe2000000, 0xe20fffff).rom().region("krom", 0);
-	map(0xe1500002, 0xe1900002).lw8([this] (u32 data) { m_lcd_enable = bool(data); }, "lcd_enable_w");
+	map(0xe1500002, 0xe1500002).lw8([this] (u32 data) { m_lcd_enable = bool(data); }, "lcd_enable_w");
 	map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
-	map(0xe4000000, 0xe401ffff).ram().share("vram");
 	map(0xe1480000, 0xe148001b).lr8([this] (offs_t offset) { LOG("%s crtc read offset %x\n", machine().describe_context(), offset); return 0xff; }, "lfbm_crtc_r");
 	map(0xe1480000, 0xe148001b).lw8([this] (offs_t offset, u8 data) { LOG("crtc offset %x 0x%02x\n", offset, data); }, "lfbm_crtc_w");
 	// // map(0xe1900000, 0xe190001b).ram();
