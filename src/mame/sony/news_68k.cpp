@@ -148,14 +148,14 @@ protected:
 
 	enum irq_number : unsigned
 	{
-		IPIRQ1  = 0,
-		IPIRQ3  = 1,
-		LANCE   = 2,
-		VME4    = 3,
-		VME2    = 4,
-		FDC     = 5,
-		PRINTER = 6,
-		SCSI    = 7,
+		IPIRQ1     = 0,
+		IPIRQ3     = 1,
+		LANCE      = 2,
+		VME4_AUDIO = 3, // Desktop = VME4, Laptop = Audio
+		VME2       = 4,
+		FDC        = 5,
+		PRINTER    = 6,
+		SCSI       = 7,
 	};
 	template <irq_number Number> void irq_w(int state);
 	void int_check();
@@ -371,6 +371,13 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 
 	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
 
+	map(0xe1000000, 0xe1000000).lw8(NAME([this] (u8 data) { 	LOG("(%s) Write POWERON = 0x%x\n", machine().describe_context(), data);
+
+	if (!machine().side_effects_disabled() && !data)
+	{
+		machine().schedule_exit();
+	}}));
+
 	map(0xe1240000, 0xe1240007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_keyboard));
 	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
 	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
@@ -380,42 +387,42 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 
 	// // above this line is 100% legit
 	map(0xe1040000, 0xe1040000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), m_ram->pointer()); }, "ram_enable"); // guess
-	map(0xe1500000, 0xe1500003); // TODO: what is this?
-	map(0xe1080000, 0xe1080000); // TODO: ditto??
+	map(0xe1080000, 0xe1080000); // TODO: random theory to investigate later: is this the memory controller? If I add more than 8MB of memory, does the written value the second time change?
+
+	map(0xe1200000, 0xe1200000).lr8([this] { return m_intst; }, "intst_r"); // TODO: make sure this is accurate by commenting it out and trying to use something it has status for
 
 	map(0xe2000000, 0xe20fffff).rom().region("krom", 0);
 	map(0xe4000000, 0xe401ffff).ram().share("vram");
 
+	map(0xe1580000, 0xe1580007).m(m_fdc, FUNC(n82077aa_device::map));
+	map(0xe15c0100, 0xe15c0100).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w));
+
+	map(0xe1a00000, 0xe1a03fff).lrw16(
+	[this](offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
+	[this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
+	map(0xe1a40000, 0xe1a40003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
+
+	map(0xe1c00000, 0xe1c00017).m(m_dma, FUNC(dmac_0266_device::map));
+	map(0xe1900000, 0xe190000f).m(m_scsi, FUNC(cxd1185_device::map));
+
+	map(0xe11c0000, 0xe11c000f); // TODO: abortctl?
+
 	// above this line is 50% legit
 
-	// map(0xe15c0000, 0xe15c0000).m(m_fdc, FUNC(n82077aa_device::map));
-	// map(0xe15c0100, 0xe15c0100).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w)); // wrong, probably?
+	// below this line is wrong or unverified
 
-	//
-	// // below this line is wrong or unverified
-	map(0xe1500002, 0xe1500002).lw8([this] (u32 data) { m_lcd_enable = bool(data); }, "lcd_enable_w");
-	map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
+	// e1500001 = LED control?
+	map(0xe1500000, 0xe1500000).lw8([this] (u32 data) { LOG("(%s) Write unknown 1 = 0x%x\n", machine().describe_context(), data); }, "unknown_1_w");
+	map(0xe1500001, 0xe1500001).lw8([this] (u32 data) { LOG("(%s) Write unknown 2 = 0x%x\n", machine().describe_context(), data); }, "unknown_2_w");
+	map(0xe1500002, 0xe1500002).lw8([this] (u32 data) { m_lcd_enable = bool(data); LOG("(%s) %s LCD\n", machine().describe_context(), m_lcd_enable ? "Enabled" : "Disabled"); }, "lcd_enable_w");
+	// WRONG: map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
 	map(0xe1480000, 0xe148001b).lr8([this] (offs_t offset) { LOG("%s crtc read offset %x\n", machine().describe_context(), offset); return 0xff; }, "lfbm_crtc_r");
 	map(0xe1480000, 0xe148001b).lw8([this] (offs_t offset, u8 data) { LOG("crtc offset %x 0x%02x\n", offset, data); }, "lfbm_crtc_w");
-	// // map(0xe1900000, 0xe190001b).ram();
-
-	// map(0xe0cc0000, 0xe0cc0007).m(m_scsi, FUNC(cxd1185_device::map));
-
-
 
 	// 0xe0c40000 // centronics
 
-	//
-	//
 	// map(0xe0dc0000, 0xe0dc0000).lw8([this](u8 data) { m_led[0] = BIT(data, 0); m_led[1] = BIT(data, 1); }, "led_w");
 	//
-	// map(0xe0e00000, 0xe0e03fff).lrw16(
-	// 	[this](offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
-	// 	[this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
-	// map(0xe0e80000, 0xe0e80017).m(m_dma, FUNC(dmac_0266_device::map));
-	// // e0ec0000 // sound board
-	// map(0xe0f00000, 0xe0f00003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
-	// // e0f40000
 	// //map(0xe0f40000, 0xe0f40000).lr8([]() { return 0xfb; }, "scc_ridsr_r");
 	//
 	// map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::timer_w));
@@ -428,9 +435,6 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	// map(0xe1900000, 0xe1900000).lw8([this](u8 data) { LOG("cache clear 0x%02x\n", data); }, "cache_clear_w");
 	// map(0xe1a00000, 0xe1a00000).lw8([this](u8 data) { LOG("parity interrupt clear 0x%02x\n", data); }, "parity_interrupt_clear_w");
 	// // 0xe1b00000 // fdc vfo external/internal
-	//
-	// // HACK: disable fdc irq for NetBSD
-	// map(0xe1c00200, 0xe1c00200).lrw8([this]() { return m_intst; }, "intst_r", [this](u8 data) { irq_w<FDC>(0); m_parity_vector = data; }, "parity_vector_w");
 	//
 	// // external I/O
 	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_laptop_state::bus_error_r));
