@@ -165,6 +165,8 @@ protected:
 
 	u32 bus_error_r();
 
+	void poweron_w(u8 data);
+
 	// devices
 	required_device<m68030_device> m_cpu;
 	required_device<ram_device> m_ram;
@@ -371,12 +373,7 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 
 	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
 
-	map(0xe1000000, 0xe1000000).lw8(NAME([this] (u8 data) { 	LOG("(%s) Write POWERON = 0x%x\n", machine().describe_context(), data);
-
-	if (!machine().side_effects_disabled() && !data)
-	{
-		machine().schedule_exit();
-	}}));
+	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::poweron_w));
 
 	map(0xe1240000, 0xe1240007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_keyboard));
 	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
@@ -502,6 +499,16 @@ u32 news_68k_base_state::bus_error_r()
 		m_cpu->set_input_line(M68K_LINE_BUSERROR, ASSERT_LINE);
 
 	return 0;
+}
+
+void news_68k_base_state::poweron_w(u8 data)
+{
+	LOG("(%s) Write POWERON = 0x%x\n", machine().describe_context(), data);
+
+	if (!machine().side_effects_disabled() && !data)
+	{
+		machine().schedule_exit();
+	}
 }
 
 u32 news_68k_laptop_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect)
