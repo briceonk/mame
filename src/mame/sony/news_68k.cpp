@@ -370,21 +370,23 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 {
 	cpu_map(map);
-
+	map.unmap_value_high();
 	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
 
 	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::poweron_w));
 
 	map(0xe1240000, 0xe1240007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_keyboard));
 	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
+	map(0xe12c0000, 0xe12c0003); // TODO: Centronics status/control
 	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
 	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
+	map(0xe1600000, 0xe1600000); // TODO: Centronics data
 	map(0xe1680000, 0xe1680000).lr8([this] { return u8(m_sw1->read()); }, "sw1_r");
 	map(0xe1780000, 0xe1780003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
 
 	// // above this line is 100% legit
-	map(0xe1040000, 0xe1040000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), m_ram->pointer()); }, "ram_enable"); // guess
-	map(0xe1080000, 0xe1080000); // TODO: random theory to investigate later: is this the memory controller? If I add more than 8MB of memory, does the written value the second time change?
+	map(0xe1040000, 0xe1040000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer()); }, "ram_enable");
+	map(0xe1080000, 0xe1080000); // TODO: random theory to investigate later: is this the memory controller? If I add more/less than 8MB of memory, does the written value the second time change?
 
 	map(0xe1200000, 0xe1200000).lr8([this] { return m_intst; }, "intst_r"); // TODO: make sure this is accurate by commenting it out and trying to use something it has status for
 
@@ -392,7 +394,7 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe4000000, 0xe401ffff).ram().share("vram");
 
 	map(0xe1580000, 0xe1580007).m(m_fdc, FUNC(n82077aa_device::map));
-	map(0xe15c0100, 0xe15c0100).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w));
+	map(0xe15c0000, 0xe15c0000).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w));
 
 	map(0xe1a00000, 0xe1a03fff).lrw16(
 	[this](offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
@@ -408,32 +410,29 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 
 	// below this line is wrong or unverified
 
-	// e1500001 = LED control?
-	map(0xe1500000, 0xe1500000).lw8([this] (u32 data) { LOG("(%s) Write unknown 1 = 0x%x\n", machine().describe_context(), data); }, "unknown_1_w");
-	map(0xe1500001, 0xe1500001).lw8([this] (u32 data) { LOG("(%s) Write unknown 2 = 0x%x\n", machine().describe_context(), data); }, "unknown_2_w");
-	map(0xe1500002, 0xe1500002).lw8([this] (u32 data) { m_lcd_enable = bool(data); LOG("(%s) %s LCD\n", machine().describe_context(), m_lcd_enable ? "Enabled" : "Disabled"); }, "lcd_enable_w");
+	// e1500001 = LED control? map(0xe0dc0000, 0xe0dc0000).lw8([this](u8 data) { m_led[0] = BIT(data, 0); m_led[1] = BIT(data, 1); }, "led_w");
+	map(0xe1500000, 0xe1500000).lrw8([this] { LOG("(%s) Read unknown 1\n", machine().describe_context()); return 0; }, "unknown_1_r",[this] (u32 data) { LOG("(%s) Write unknown 1 = 0x%x\n", machine().describe_context(), data); }, "unknown_1_w");
+	map(0xe1500001, 0xe1500001).lrw8([this] { LOG("(%s) Read unknown 2\n", machine().describe_context()); return 0; }, "unknown_2_r",[this] (u32 data) { LOG("(%s) Write unknown 2 = 0x%x\n", machine().describe_context(), data); }, "unknown_2_w");
+	map(0xe1500002, 0xe1500002).lrw8([this] { LOG("(%s) Read LCD enable\n", machine().describe_context()); return m_lcd_enable; }, "lcd_enable_r",[this] (u32 data) { m_lcd_enable = bool(data); LOG("(%s) %s LCD\n", machine().describe_context(), m_lcd_enable ? "Enabled" : "Disabled"); }, "lcd_enable_w");
 	// WRONG: map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
 	map(0xe1480000, 0xe148001b).lr8([this] (offs_t offset) { LOG("%s crtc read offset %x\n", machine().describe_context(), offset); return 0xff; }, "lfbm_crtc_r");
 	map(0xe1480000, 0xe148001b).lw8([this] (offs_t offset, u8 data) { LOG("crtc offset %x 0x%02x\n", offset, data); }, "lfbm_crtc_w");
 
-	// 0xe0c40000 // centronics
+	//map(0xe1c00010, 0xe1c00017).lrw8([this] { LOG("(%s) Read smth\n", machine().describe_context()); return 0x1; }, "unknown_3_r",[this] (u32 data) { LOG("(%s) Write smth = 0x%x\n", machine().describe_context(), data); }, "unknown_3_w");
+	// map(0xe1c00010, 0xe1c00017).r(FUNC(news_68k_laptop_state::bus_error_r));
 
-	// map(0xe0dc0000, 0xe0dc0000).lw8([this](u8 data) { m_led[0] = BIT(data, 0); m_led[1] = BIT(data, 1); }, "led_w");
 	//
 	// //map(0xe0f40000, 0xe0f40000).lr8([]() { return 0xfb; }, "scc_ridsr_r");
 	//
 	// map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::timer_w));
 	// map(0xe1080000, 0xe1080000).lw8([this](u8 data) { LOG("parity check enable 0x%02x\n", data); }, "parity_check_enable_w");
 	// map(0xe1180000, 0xe1180000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ2, bool(data)); }, "irq2_w");
-	// map(0xe1200000, 0xe1200000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer()); }, "ram_enable");
 	// map(0xe1280000, 0xe1280000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ1, bool(data)); }, "ast_w");
 	// map(0xe1300000, 0xe1300000).lw8([this](u8 data) { LOG("cache enable 0x%02x (%s)\n", data, machine().describe_context()); }, "cache_enable_w");
-	// // 0xe1380000 // power on/off
 	// map(0xe1900000, 0xe1900000).lw8([this](u8 data) { LOG("cache clear 0x%02x\n", data); }, "cache_clear_w");
 	// map(0xe1a00000, 0xe1a00000).lw8([this](u8 data) { LOG("parity interrupt clear 0x%02x\n", data); }, "parity_interrupt_clear_w");
-	// // 0xe1b00000 // fdc vfo external/internal
-	//
-	// // external I/O
+
+	// external I/O
 	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_laptop_state::bus_error_r));
 }
 
