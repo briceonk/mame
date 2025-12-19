@@ -15,8 +15,6 @@
 
     TODO (per-game issues)
     - doa, doaa: corrupted sound, eventually becomes silent;
-    - hpyagu98: stops with 'Error #1' message during boot.
-      Also writes to the 0x600000-0x62ffff range in main CPU program map;
     - lastbrnx: uses external DMA port 0 for uploading SHARC program, hook-up might not be 100% right;
     - lastbrnx: has wrong graphics, uses several SHARC opcodes that needs to be double checked
                 (compute_fmul_avg, shift operation 0x11, ALU operation 0x89 (compute_favg));
@@ -24,6 +22,8 @@
               bypass it by entering then exiting service mode;
     - sgt24h: has input analog issues, steering doesn't center when neutral,
       gas and brake pedals pulses instead of being fixed;
+	- vcop2: stage select has tilemap priority issue, tilemap B (city model) has priority bit set,
+	         yet it should appear underneath tilemap A ("shoot to select") which does not
 
     Notes:
     - some analog games can be calibrated in service mode via volume control item ...
@@ -72,6 +72,12 @@
 #include "emu.h"
 #include "model2.h"
 
+#include "315_5296.h"
+#include "315_5649.h"
+#include "model1io.h"
+#include "model1io2.h"
+#include "segaic24.h"
+
 #include "cpu/i960/i960.h"
 #include "cpu/m68000/m68000.h"
 #include "cpu/z80/z80.h"
@@ -81,12 +87,8 @@
 #include "machine/mb8421.h"
 #include "machine/msm6253.h"
 #include "machine/nvram.h"
-#include "315_5296.h"
-#include "315_5649.h"
-#include "model1io.h"
-#include "model1io2.h"
 #include "sound/ymopn.h"
-#include "segaic24.h"
+
 #include "speaker.h"
 
 #include "model1io2.lh"
@@ -138,6 +140,16 @@ TIMER_DEVICE_CALLBACK_MEMBER(model2_state::model2_timer_cb)
 	m_timerrun[TNum] = 0;
 }
 
+TIMER_CALLBACK_MEMBER(model2_state::check_sound_irq)
+{
+	const u32 line = 1 << 10;
+	if ((m_uart->status_r() & 0x03) && (m_intena & line))
+	{
+		m_intreq |= line;
+		irq_update();
+	}
+}
+
 void model2_state::machine_start()
 {
 	// initialize custom debugger pool, @see machine/model2.cpp
@@ -165,6 +177,9 @@ void model2_state::machine_start()
 
 	save_item(NAME(m_geo_write_start_address));
 	save_item(NAME(m_geo_read_start_address));
+
+	m_irq_delay_timer = timer_alloc(FUNC(model2_state::check_sound_irq), this);
+	m_irq_delay_timer->adjust(attotime::never);
 }
 
 void model2_tgp_state::machine_start()
@@ -921,12 +936,8 @@ void model2_state::irq_enable_w(offs_t offset, u32 data, u32 mem_mask)
 {
 	COMBINE_DATA(&m_intena);
 
-	const u32 line = 1 << 10;
-	if ((m_uart->status_r() & 0x03) && (m_intena & line))
-	{
-		m_intreq |= line;
-		irq_update();
-	}
+	// delay sound IRQ check by 2 cycles; vcop2 needs this
+	m_irq_delay_timer->adjust(attotime::from_nsec(80));
 }
 
 void model2_state::irq_update()
@@ -1306,7 +1317,7 @@ void model2o_state::model2o_mem(address_map &map)
 /* Daytona "To The MAXX" PIC protection simulation */
 u32 model2o_maxx_state::maxx_r(offs_t offset, u32 mem_mask)
 {
-	u32 *ROM = (u32 *)memregion("maincpu")->base();
+	u32 *ROM = &memregion("maincpu")->as_u32();
 
 	if (offset <= 0x1f/4)
 	{
@@ -1353,16 +1364,22 @@ void model2o_maxx_state::model2o_maxx_mem(address_map &map)
 
 u8 model2o_gtx_state::gtx_r(offs_t offset)
 {
-	u8 *ROM = memregion("prot_data")->base();
+	auto ROM = util::little_endian_cast<u8>(&m_prot_data[0]);
 
-	if(offset == 0xffffc) // disable protection ROM overlay (fallbacks to data rom?)
-		m_gtx_state = 2;
-	else if(offset == 0xff00c || offset == 0xf0003) // enable protection bank 0
-		m_gtx_state = 0;
-	else if(offset == 0xff000) // enable protection bank 1
-		m_gtx_state = 1;
+	int gtx_state;
+	if (offset == 0xffffc) // disable protection ROM overlay (fallbacks to data ROM?)
+		gtx_state = 2;
+	else if (offset == 0xff00c || offset == 0xf0003) // enable protection bank 0
+		gtx_state = 0;
+	else if (offset == 0xff000) // enable protection bank 1
+		gtx_state = 1;
+	else
+		gtx_state = m_gtx_state;
 
-	return ROM[m_gtx_state*0x100000+offset];
+	if (!machine().side_effects_disabled())
+		m_gtx_state = gtx_state;
+
+	return ROM[gtx_state * 0x100000 + offset];
 }
 
 void model2o_gtx_state::model2o_gtx_mem(address_map &map)
@@ -1374,7 +1391,7 @@ void model2o_gtx_state::model2o_gtx_mem(address_map &map)
 /* TODO: read by Sonic the Fighters (bit 1), unknown purpose */
 u32 model2_state::copro_status_r()
 {
-	if(m_coprocnt == 0)
+	if (m_coprocnt == 0)
 		return -1;
 
 	return 0;
@@ -7469,8 +7486,8 @@ ROM_START( hpyagu98 ) /* Hanguk Pro Yagu 98, Model 2A, ROM board# 834-11342 REV.
 	ROM_LOAD32_WORD( "bb-tp-3.21", 0x800002, 0x400000, CRC(dbadc020) SHA1(101cab02cf6e14b7438faa0dadc565e0837aba34) )
 
 	ROM_REGION( 0x1000000, "textures", ROMREGION_ERASEFF ) // Textures
-	ROM_LOAD32_WORD( "bb-tx-0.25", 0x000000, 0x400000, CRC(d241a138) SHA1(bd2dff3d76b25705f474acd428b301fa984ff321) )
-	ROM_LOAD32_WORD( "bb-tx-1.24", 0x000002, 0x400000, CRC(ac04ce3c) SHA1(aa35e34957d5215d7f784cadc59fe1c74d4b6d01) )
+	ROM_LOAD32_WORD( "bb-tx-1.25", 0x000000, 0x400000, CRC(ac04ce3c) SHA1(aa35e34957d5215d7f784cadc59fe1c74d4b6d01) )
+	ROM_LOAD32_WORD( "bb-tx-0.24", 0x000002, 0x400000, CRC(d241a138) SHA1(bd2dff3d76b25705f474acd428b301fa984ff321) )
 
 	ROM_REGION( 0x080000, "audiocpu", 0 ) // Sound program
 	ROM_LOAD16_WORD_SWAP( "am27c1024.30", 0x000000, 0x020000, CRC(023c64f1) SHA1(43b9bb1c7a3da8650a6da60f58466d4ac759b228) ) // without label
@@ -7481,6 +7498,12 @@ ROM_START( hpyagu98 ) /* Hanguk Pro Yagu 98, Model 2A, ROM board# 834-11342 REV.
 	ROM_LOAD16_WORD_SWAP( "bb-sn-3.36", 0x400000, 0x200000, CRC(e4c938b2) SHA1(3a96433f58a52dea026ab47bf93dc6a9c620e1dd) )
 	ROM_LOAD16_WORD_SWAP( "bb-sn-4.37", 0x600000, 0x200000, CRC(8692fbf3) SHA1(d8e854bba7b54fba85e182d761a9fd02fd13646f) )
 
+	ROM_REGION16_LE(0x80, "eeprom", 0) // EEPROM (required to prevent error #0 on boot)
+	ROM_LOAD("hpyagu98_nvram", 0x00, 0x80, CRC(3634c60f) SHA1(1ab7b74fd05b2d21496af9b2a477c0d197847c55)) // partly handcrafted, same settings as dynabb97 default
+
+	ROM_REGION(0x4000, "backup1", 0) // Backup RAM (required to prevent error #0 on boot)
+	ROM_LOAD("hpyagu98_backup", 0x0000, 0x4000, CRC(979751d5) SHA1(2f6c6d12b77d7fbd3e44b05f4c21ca479fae782c)) // partly handcrafted
+
 	MODEL2_CPU_BOARD
 	MODEL2A_VID_BOARD
 ROM_END
@@ -7489,30 +7512,30 @@ ROM_END
 void model2_state::init_pltkids()
 {
 	// HACK: fix bug in program: it destroys the interrupt table and never fixes it
-	u32 *ROM = (u32 *)memregion("maincpu")->base();
+	u32 *ROM = &memregion("maincpu")->as_u32();
 	ROM[0x730/4] = 0x08000004;
 }
 
 void model2_state::init_zerogun()
 {
 	// HACK: fix bug in program: it destroys the interrupt table and never fixes it
-	u32 *ROM = (u32 *)memregion("maincpu")->base();
+	u32 *ROM = &memregion("maincpu")->as_u32();
 	ROM[0x700/4] = 0x08000004;
 }
 
 void model2_state::init_sgt24h()
 {
-//  u32 *ROM = (u32 *)memregion("maincpu")->base();
-//  ROM[0x56578/4] = 0x08000004;
+	//u32 *ROM = &memregion("maincpu")->as_u32();
+	//ROM[0x56578/4] = 0x08000004;
 	//ROM[0x5b3e8/4] = 0x08000004;
 }
 
 void model2_state::init_powsledm()
 {
-	u8 *ROM = (u8 *)memregion("maincpu")->base();
-	ROM[0x1571C] = 0x01; // Main mode
-	ROM[0x1584C] = 0x89; // set node ID 0x200 = main
-	ROM[0x1585D] = 0xFD; // inverted node ID
+	auto ROM = util::little_endian_cast<u8>(&memregion("maincpu")->as_u32());
+	ROM[0x1571c] = 0x01; // Main mode
+	ROM[0x1584c] = 0x89; // set node ID 0x200 = main
+	ROM[0x1585d] = 0xfd; // inverted node ID
 }
 
 u32 model2_state::doa_prot_r(offs_t offset, u32 mem_mask)

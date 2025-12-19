@@ -4891,9 +4891,9 @@ void wingco_state::wcat3_map(address_map &map)
 	map(0x8000, 0x87ff).ram().share("nvram");
 	map(0x8800, 0x8fff).ram().w(FUNC(wingco_state::fg_vidram_w)).share(m_fg_vidram);
 	map(0x9000, 0x97ff).ram().w(FUNC(wingco_state::fg_atrram_w)).share(m_fg_atrram);
-	map(0x9800, 0x99ff).mirror(0x200).ram().w(FUNC(wingco_state::reel_ram_w<0>)).share(m_reel_ram[0]);  // all reels use mirrors?
-	map(0xa000, 0xa1ff).ram().w(FUNC(wingco_state::reel_ram_w<1>)).share(m_reel_ram[1]);
-	map(0xa800, 0xa9ff).ram().w(FUNC(wingco_state::reel_ram_w<2>)).share(m_reel_ram[2]);
+	map(0x9800, 0x99ff).mirror(0x200).ram().w(FUNC(wingco_state::reel_ram_w<0>)).share(m_reel_ram[0]);  // reels need mirrors for animated symbols
+	map(0xa000, 0xa1ff).mirror(0x200).ram().w(FUNC(wingco_state::reel_ram_w<1>)).share(m_reel_ram[1]);  // reels need mirrors for animated symbols
+	map(0xa800, 0xa9ff).mirror(0x200).ram().w(FUNC(wingco_state::reel_ram_w<2>)).share(m_reel_ram[2]);  // reels need mirrors for animated symbols
 	map(0xb040, 0xb07f).ram().share(m_reel_scroll[0]);
 	map(0xb080, 0xb0bf).ram().share(m_reel_scroll[1]);
 	map(0xb100, 0xb17f).ram().share(m_reel_scroll[2]);
@@ -11302,15 +11302,25 @@ static INPUT_PORTS_START( nfb96 )
 	PORT_BIT( 0x80, IP_ACTIVE_LOW, IPT_GAMBLE_BOOK ) PORT_NAME("Stats")
 
 	PORT_START("DSW1")
-	PORT_DIPNAME( 0x07, 0x03, "Game Level (Difficulty)" )   PORT_DIPLOCATION("DSW1:!1,!2,!3")  // OK
-	PORT_DIPSETTING(    0x07, "Level 1 (Easiest)" )
-	PORT_DIPSETTING(    0x06, "Level 2" )
-	PORT_DIPSETTING(    0x05, "Level 3" )
-	PORT_DIPSETTING(    0x04, "Level 4" )
-	PORT_DIPSETTING(    0x03, "Level 5" )
-	PORT_DIPSETTING(    0x02, "Level 6" )
-	PORT_DIPSETTING(    0x01, "Level 7" )
-	PORT_DIPSETTING(    0x00, "Level 8 (Hardest)" )
+	PORT_DIPNAME( 0x07, 0x03, "Main Game Pay Rate" ) PORT_DIPLOCATION("DSW1:!1,!2,!3") PORT_CONDITION("DSW4", 0x02, EQUALS, 0x02)
+	PORT_DIPSETTING( 0x00, "55%" ) PORT_CONDITION("DSW4", 0x02, EQUALS, 0x02)
+	PORT_DIPSETTING( 0x01, "60%" ) PORT_CONDITION("DSW4", 0x02, EQUALS, 0x02)
+	PORT_DIPSETTING( 0x02, "65%" ) PORT_CONDITION("DSW4", 0x02, EQUALS, 0x02)
+	PORT_DIPSETTING( 0x03, "70%" ) PORT_CONDITION("DSW4", 0x02, EQUALS, 0x02)
+	PORT_DIPSETTING( 0x04, "75%" ) PORT_CONDITION("DSW4", 0x02, EQUALS, 0x02)
+	PORT_DIPSETTING( 0x05, "80%" ) PORT_CONDITION("DSW4", 0x02, EQUALS, 0x02)
+	PORT_DIPSETTING( 0x06, "85%" ) PORT_CONDITION("DSW4", 0x02, EQUALS, 0x02)
+	PORT_DIPSETTING( 0x07, "90%" ) PORT_CONDITION("DSW4", 0x02, EQUALS, 0x02)	
+	// --- Show Difficulty Levels (DSW4:2 = 0) ---
+	PORT_DIPNAME( 0x07, 0x03, "Game Level (Difficulty)" ) PORT_DIPLOCATION("DSW1:!1,!2,!3") PORT_CONDITION("DSW4", 0x02, NOTEQUALS, 0x02)
+	PORT_DIPSETTING( 0x00, "Level 8" ) PORT_CONDITION("DSW4", 0x02, NOTEQUALS, 0x02)
+	PORT_DIPSETTING( 0x01, "Level 7" ) PORT_CONDITION("DSW4", 0x02, NOTEQUALS, 0x02)
+	PORT_DIPSETTING( 0x02, "Level 6" ) PORT_CONDITION("DSW4", 0x02, NOTEQUALS, 0x02)
+	PORT_DIPSETTING( 0x03, "Level 5" ) PORT_CONDITION("DSW4", 0x02, NOTEQUALS, 0x02)
+	PORT_DIPSETTING( 0x04, "Level 4" ) PORT_CONDITION("DSW4", 0x02, NOTEQUALS, 0x02)
+	PORT_DIPSETTING( 0x05, "Level 3" ) PORT_CONDITION("DSW4", 0x02, NOTEQUALS, 0x02)
+	PORT_DIPSETTING( 0x06, "Level 2" ) PORT_CONDITION("DSW4", 0x02, NOTEQUALS, 0x02)
+	PORT_DIPSETTING( 0x07, "Level 1" ) PORT_CONDITION("DSW4", 0x02, NOTEQUALS, 0x02)
 	PORT_DIPNAME( 0x38, 0x38, "Maximum Play" )              PORT_DIPLOCATION("DSW1:!4,!5,!6")  // OK
 	PORT_DIPSETTING(    0x00, "10" )    PORT_CONDITION("DSW5", 0x10, EQUALS, 0x00)
 	PORT_DIPSETTING(    0x08, "20" )    PORT_CONDITION("DSW5", 0x10, EQUALS, 0x00)
@@ -20237,7 +20247,20 @@ ROM_START( ll3f )
 	ROM_LOAD( "prom3.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
 ROM_END
 
+/*
+  Cherry Master '99
 
+  This hardware has a complex and insane bankswitching system.
+  The PCB seems similar to cm89, but with an extension where
+  you can see unpopulated components, a not soldered DB9 (RS232)
+  port, and two 18CV8 PEELS that seems responsible of this insane
+  dynamic ROM banking.
+
+  Now PLDs are dumped and preserved.
+
+  Note that this hardware runs more games than cmaster99 ones.
+
+*/
 ROM_START( cmast99 )
 	ROM_REGION( 0x10000, "maincpu", 0 )
 	// this ROM loading is confirmed via ICE dump at reset
@@ -20264,7 +20287,7 @@ ROM_START( cmast99 )
 	ROM_LOAD( "cm99-041-4.u15", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
 	ROM_LOAD( "cm99-041-3.u10", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
 	ROM_LOAD( "cm99-041-2.u14", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
-	ROM_LOAD( "cm99-041-1.u9",  0x6000, 0x2000, CRC(44046c31) SHA1(c9703ce2371cf86bc597e5fdb9c0d4dd6d91f7dc) )
+	ROM_LOAD( "cm99-041-1.u9",  0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
 
 	ROM_REGION( 0x10000, "user1", 0 )
 	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
@@ -20276,11 +20299,15 @@ ROM_START( cmast99 )
 	ROM_REGION( 0x100, "proms2", 0 )
 	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
 
-	ROM_REGION( 0x800, "plds", ROMREGION_ERASE00 )
+	ROM_REGION( 0x800, "plds", 0 )
 	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
 	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
 	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
 	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
 ROM_END
 
 
@@ -20305,7 +20332,7 @@ ROM_START( cmast99b )
 	ROM_LOAD( "cm99-041-4.u15", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
 	ROM_LOAD( "cm99-041-3.u10", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
 	ROM_LOAD( "cm99-041-2.u14", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
-	ROM_LOAD( "cm99-041-1.u9",  0x6000, 0x2000, CRC(44046c31) SHA1(c9703ce2371cf86bc597e5fdb9c0d4dd6d91f7dc) )
+	ROM_LOAD( "cm99-041-1.u9",  0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
 
 	ROM_REGION( 0x10000, "user1", 0 )
 	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
@@ -20316,6 +20343,483 @@ ROM_START( cmast99b )
 
 	ROM_REGION( 0x100, "proms2", 0 )
 	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
+ROM_END
+
+ROM_START( cmast99c )
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "cmaster_99_m27c512_cleco.bin", 0x0000, 0x1000, CRC(23a44d71) SHA1(c3692c62b960c4f44eba1ea9576a9cdcfb62bd39) )
+	ROM_CONTINUE(0x4000,0x1000)
+	ROM_CONTINUE(0x3000,0x1000)
+	ROM_CONTINUE(0x7000,0x1000)
+	ROM_CONTINUE(0x1000,0x1000)
+	ROM_CONTINUE(0x6000,0x1000)
+	ROM_CONTINUE(0x2000,0x1000)
+	ROM_CONTINUE(0x5000,0x1000)
+	ROM_CONTINUE(0x8000,0x8000)
+
+	ROM_REGION( 0x18000, "gfx1", 0 )
+	ROM_LOAD( "cm99-041-7.u16", 0x00000, 0x8000, CRC(69e2aef2) SHA1(195faec239734650dcd777d55a8da84e3a0ed50c) )
+	ROM_LOAD( "cm99-041-6.u11", 0x08000, 0x8000, CRC(900f36f5) SHA1(0fd41f8c8cb2f7940b653a1fad93df2e3f28a34b) )
+	ROM_LOAD( "cm99-041-5.u4",  0x10000, 0x8000, CRC(3e465e38) SHA1(847dc27e45d495cb924b3fd5ce8e68a1cb83ffc8) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "cm99-041-4.u15", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
+	ROM_LOAD( "cm99-041-3.u10", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
+	ROM_LOAD( "cm99-041-2.u14", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
+	ROM_LOAD( "cm99-041-1.u9",  0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
+
+	ROM_REGION( 0x10000, "user1", 0 )
+	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
+
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x100, "proms2", 0 )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
+ROM_END
+
+ROM_START( cmast99d )
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "cmast_99_m27c512_usa_board_long.bin", 0x0000, 0x1000, CRC(5f209e97) SHA1(a9b90db26c172d7c24cbb338d5a76cb0397fb3cd) )
+	ROM_CONTINUE(0x4000,0x1000)
+	ROM_CONTINUE(0x3000,0x1000)
+	ROM_CONTINUE(0x7000,0x1000)
+	ROM_CONTINUE(0x1000,0x1000)
+	ROM_CONTINUE(0x6000,0x1000)
+	ROM_CONTINUE(0x2000,0x1000)
+	ROM_CONTINUE(0x5000,0x1000)
+	ROM_CONTINUE(0x8000,0x8000)
+
+	ROM_REGION( 0x18000, "gfx1", 0 )
+	ROM_LOAD( "cm99-041-7.u16", 0x00000, 0x8000, CRC(69e2aef2) SHA1(195faec239734650dcd777d55a8da84e3a0ed50c) )
+	ROM_LOAD( "cm99-041-6.u11", 0x08000, 0x8000, CRC(900f36f5) SHA1(0fd41f8c8cb2f7940b653a1fad93df2e3f28a34b) )
+	ROM_LOAD( "cm99-041-5.u4",  0x10000, 0x8000, CRC(3e465e38) SHA1(847dc27e45d495cb924b3fd5ce8e68a1cb83ffc8) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "cm99-041-4.u15", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
+	ROM_LOAD( "cm99-041-3.u10", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
+	ROM_LOAD( "cm99-041-2.u14", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
+	ROM_LOAD( "cm99-041-1.u9",  0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
+
+	ROM_REGION( 0x10000, "user1", 0 )
+	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
+
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x100, "proms2", 0 )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
+ROM_END
+
+/*
+  Cherry Master '99 (Cleco, Hand Count?)
+  Taiwanese bootleg.
+
+  Different bankswitching?
+
+  bp 29f
+  
+  ld b, $fc
+  call $0bf6 --> disable the screen
+  call $91d0 --> banked to $51d0?
+
+*/
+ROM_START( cmast99hc )
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "cmast_99_hc.bin", 0x0000, 0x1000, CRC(021df5aa) SHA1(62863fbd95ecca3fa37bcc169184c15e6372ac55) )
+	ROM_CONTINUE(0x4000,0x1000)
+	ROM_CONTINUE(0x3000,0x1000)
+	ROM_CONTINUE(0x7000,0x1000)
+	ROM_CONTINUE(0x1000,0x1000)
+	ROM_CONTINUE(0x6000,0x1000)
+	ROM_CONTINUE(0x2000,0x1000)
+	ROM_CONTINUE(0x5000,0x1000)
+	ROM_CONTINUE(0x8000,0x8000)
+
+	ROM_REGION( 0x18000, "gfx1", 0 )
+	ROM_LOAD( "cm99-041-7.u16", 0x00000, 0x8000, CRC(69e2aef2) SHA1(195faec239734650dcd777d55a8da84e3a0ed50c) )
+	ROM_LOAD( "cm99-041-6.u11", 0x08000, 0x8000, CRC(900f36f5) SHA1(0fd41f8c8cb2f7940b653a1fad93df2e3f28a34b) )
+	ROM_LOAD( "cm99-041-5.u4",  0x10000, 0x8000, CRC(3e465e38) SHA1(847dc27e45d495cb924b3fd5ce8e68a1cb83ffc8) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "cm99-041-4.u15", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
+	ROM_LOAD( "cm99-041-3.u10", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
+	ROM_LOAD( "cm99-041-2.u14", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
+	ROM_LOAD( "cm99-041-1.u9",  0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
+
+	ROM_REGION( 0x10000, "user1", 0 )
+	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
+
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x100, "proms2", 0 )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
+ROM_END
+
+ROM_START( texas99 )
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "cm99-041-8.u81", 0x0000, 0x1000, CRC(5fb0800e) SHA1(14d316b7b89340c5b5c9fdd0b43d5810513b74d6) )
+	ROM_CONTINUE(0x4000, 0x1000)
+	ROM_CONTINUE(0x3000, 0x1000)
+	ROM_CONTINUE(0x7000, 0x1000)
+	ROM_CONTINUE(0x1000, 0x1000)
+	ROM_CONTINUE(0x6000, 0x1000)
+	ROM_CONTINUE(0x2000, 0x1000)
+	ROM_CONTINUE(0x5000, 0x1000)
+	ROM_CONTINUE(0x8000, 0x8000)
+
+	ROM_REGION( 0x18000, "gfx1", 0 )
+	ROM_LOAD( "rom7.bin", 0x00000, 0x8000, CRC(d77d1f8b) SHA1(69761cb9cbb903b8c94ca1b3727f6c686bda1be2) )
+	ROM_LOAD( "rom6.bin", 0x08000, 0x8000, CRC(4b26ed0a) SHA1(24f56835e098f47dd92bca1c3bc13a4afeb8d58c) )
+	ROM_LOAD( "rom5.bin", 0x10000, 0x8000, CRC(b2ee065f) SHA1(a41aaa6515adfac4f6f705b8e1ff4a25cdc91e4e) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "rom4.bin", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
+	ROM_LOAD( "rom3.bin", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
+	ROM_LOAD( "rom2.bin", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
+	ROM_LOAD( "rom1.bin", 0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
+
+	ROM_REGION( 0x10000, "user1", 0 )
+	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
+
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x100, "proms2", 0 )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
+ROM_END
+
+ROM_START( texas99b )
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "cm99b-041-8.u81", 0x0000, 0x1000, CRC(e0872d9f) SHA1(6d8f5e09e5c9daf834d5c74434eae86e5dd7e194) )
+	ROM_CONTINUE(0x4000, 0x1000)
+	ROM_CONTINUE(0x3000, 0x1000)
+	ROM_CONTINUE(0x7000, 0x1000)
+	ROM_CONTINUE(0x1000, 0x1000)
+	ROM_CONTINUE(0x6000, 0x1000)
+	ROM_CONTINUE(0x2000, 0x1000)
+	ROM_CONTINUE(0x5000, 0x1000)
+	ROM_CONTINUE(0x8000, 0x8000)
+
+	ROM_REGION( 0x18000, "gfx1", 0 )
+	ROM_LOAD( "rom7.bin", 0x00000, 0x8000, CRC(d77d1f8b) SHA1(69761cb9cbb903b8c94ca1b3727f6c686bda1be2) )
+	ROM_LOAD( "rom6.bin", 0x08000, 0x8000, CRC(4b26ed0a) SHA1(24f56835e098f47dd92bca1c3bc13a4afeb8d58c) )
+	ROM_LOAD( "rom5.bin", 0x10000, 0x8000, CRC(b2ee065f) SHA1(a41aaa6515adfac4f6f705b8e1ff4a25cdc91e4e) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "rom4.bin", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
+	ROM_LOAD( "rom3.bin", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
+	ROM_LOAD( "rom2.bin", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
+	ROM_LOAD( "rom1.bin", 0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
+
+	ROM_REGION( 0x10000, "user1", 0 )
+	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
+
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x100, "proms2", 0 )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
+ROM_END
+
+ROM_START( texas99c )
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "texas_99_m27c512_cleco.bin", 0x0000, 0x1000, CRC(23a44d71) SHA1(c3692c62b960c4f44eba1ea9576a9cdcfb62bd39) )
+	ROM_CONTINUE(0x4000, 0x1000)
+	ROM_CONTINUE(0x3000, 0x1000)
+	ROM_CONTINUE(0x7000, 0x1000)
+	ROM_CONTINUE(0x1000, 0x1000)
+	ROM_CONTINUE(0x6000, 0x1000)
+	ROM_CONTINUE(0x2000, 0x1000)
+	ROM_CONTINUE(0x5000, 0x1000)
+	ROM_CONTINUE(0x8000, 0x8000)
+
+	ROM_REGION( 0x18000, "gfx1", 0 )
+	ROM_LOAD( "rom7.bin", 0x00000, 0x8000, CRC(d77d1f8b) SHA1(69761cb9cbb903b8c94ca1b3727f6c686bda1be2) )
+	ROM_LOAD( "rom6.bin", 0x08000, 0x8000, CRC(4b26ed0a) SHA1(24f56835e098f47dd92bca1c3bc13a4afeb8d58c) )
+	ROM_LOAD( "rom5.bin", 0x10000, 0x8000, CRC(b2ee065f) SHA1(a41aaa6515adfac4f6f705b8e1ff4a25cdc91e4e) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "rom4.bin", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
+	ROM_LOAD( "rom3.bin", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
+	ROM_LOAD( "rom2.bin", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
+	ROM_LOAD( "rom1.bin", 0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
+
+	ROM_REGION( 0x10000, "user1", 0 )
+	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
+
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x100, "proms2", 0 )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
+ROM_END
+
+ROM_START( texas99d )
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "texas_99_m27c512_usa_board_long.bin", 0x0000, 0x1000, CRC(5f209e97) SHA1(a9b90db26c172d7c24cbb338d5a76cb0397fb3cd) )
+	ROM_CONTINUE(0x4000, 0x1000)
+	ROM_CONTINUE(0x3000, 0x1000)
+	ROM_CONTINUE(0x7000, 0x1000)
+	ROM_CONTINUE(0x1000, 0x1000)
+	ROM_CONTINUE(0x6000, 0x1000)
+	ROM_CONTINUE(0x2000, 0x1000)
+	ROM_CONTINUE(0x5000, 0x1000)
+	ROM_CONTINUE(0x8000, 0x8000)
+
+	ROM_REGION( 0x18000, "gfx1", 0 )
+	ROM_LOAD( "rom7.bin", 0x00000, 0x8000, CRC(d77d1f8b) SHA1(69761cb9cbb903b8c94ca1b3727f6c686bda1be2) )
+	ROM_LOAD( "rom6.bin", 0x08000, 0x8000, CRC(4b26ed0a) SHA1(24f56835e098f47dd92bca1c3bc13a4afeb8d58c) )
+	ROM_LOAD( "rom5.bin", 0x10000, 0x8000, CRC(b2ee065f) SHA1(a41aaa6515adfac4f6f705b8e1ff4a25cdc91e4e) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "rom4.bin", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
+	ROM_LOAD( "rom3.bin", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
+	ROM_LOAD( "rom2.bin", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
+	ROM_LOAD( "rom1.bin", 0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
+
+	ROM_REGION( 0x10000, "user1", 0 )
+	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
+
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x100, "proms2", 0 )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
+ROM_END
+
+/*
+  New Texas '99 (Kolom V1)
+  http://www.kolom.com.tw
+
+  Seems to have extra I/O ports.
+
+  7b1d: ld  a, $a1
+  7b1f: out ($78),a
+  7b21: in a, ($7a)  --> waiting for bit5 stats
+  7b23: bit5, a
+  7b25: jr  z, $7b21
+
+  *EDIT*
+  
+  The game is not a bootleg. Runs in cmast99 hardware
+  with a heavily protected daughterboard.
+
+  Daughterboard specs:
+
+  Silkscreened "KOLOM-LK1"
+
+  1x Zilog Z84C0006PEC (Z80 CPU)
+  1x NEC D71055C Parallel Interfase Unit (i8255 PPI compatible)
+  1x ATMEL AT89C51 (MCU with 4KB of internal flash ROM)
+  1x HM6116 SRAM.
+  1x PEEL18CV8P-25
+  1x 8 DIP switches bank.
+  1x 5 DIP switches bank.
+  1x DB9 not soldered port (possible RS232 comm)
+  1x 3-pin connector (P1).
+  2x Red LEDs (maybe for system status).
+  1x 12.000 MHz Xtal.
+
+  Due to the complexity, this daughterboard seems to be meant
+  for different extra functions, as printers, SAS, jackpot
+  servers, or whatever linking system.
+  Needs further investigtion.
+
+*/
+ROM_START( texas99e )
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "new_texas_99.bin", 0x0000, 0x1000, CRC(74025b83) SHA1(eb33a4d2f92f321794e47e562e2cc703c4e481b9) )
+	ROM_CONTINUE(0x4000, 0x1000)
+	ROM_CONTINUE(0x3000, 0x1000)
+	ROM_CONTINUE(0x7000, 0x1000)
+	ROM_CONTINUE(0x1000, 0x1000)
+	ROM_CONTINUE(0x6000, 0x1000)
+	ROM_CONTINUE(0x2000, 0x1000)
+	ROM_CONTINUE(0x5000, 0x1000)
+	ROM_CONTINUE(0x8000, 0x8000)
+
+	ROM_REGION( 0x1000, "mcu", 0 )  // daughterboard at89c51 internal binary
+	ROM_LOAD( "n99v251.tsk", 0x00000, 0x1000, CRC(3cd90940) SHA1(7ce9eacc12955f64b4177a8e1252c4d2c7a89578) )
+
+	ROM_REGION( 0x18000, "gfx1", 0 )
+	ROM_LOAD( "rom7.bin", 0x00000, 0x8000, CRC(d77d1f8b) SHA1(69761cb9cbb903b8c94ca1b3727f6c686bda1be2) )
+	ROM_LOAD( "rom6.bin", 0x08000, 0x8000, CRC(4b26ed0a) SHA1(24f56835e098f47dd92bca1c3bc13a4afeb8d58c) )
+	ROM_LOAD( "rom5.bin", 0x10000, 0x8000, CRC(b2ee065f) SHA1(a41aaa6515adfac4f6f705b8e1ff4a25cdc91e4e) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "rom4.bin", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
+	ROM_LOAD( "rom3.bin", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
+	ROM_LOAD( "rom2.bin", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
+	ROM_LOAD( "rom1.bin", 0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
+
+	ROM_REGION( 0x10000, "user1", 0 )
+	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
+
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x100, "proms2", 0 )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x200, "plds_db", 0 )  // PLDs from the daughterboard
+	ROM_LOAD( "peel18cv8_ntx99_db.bin", 0x0000, 0x0155, CRC(1b4b7240) SHA1(371c81be94540c334196974f3868b7102751dcae) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
+ROM_END
+
+/*
+  Texas '99 (Cleco, Hand Count?)
+  Taiwanese bootleg. Same as cmast99hc.
+
+  Different bankswitching?
+
+  bp 29f
+  
+  ld b, $fc
+  call $0bf6 --> disable the screen
+  call $91d0 --> banked to $51d0?
+
+*/
+ROM_START( texas99hc )
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "texas_99_hc.bin", 0x0000, 0x1000, CRC(021df5aa) SHA1(62863fbd95ecca3fa37bcc169184c15e6372ac55) )
+	ROM_CONTINUE(0x4000, 0x1000)
+	ROM_CONTINUE(0x3000, 0x1000)
+	ROM_CONTINUE(0x7000, 0x1000)
+	ROM_CONTINUE(0x1000, 0x1000)
+	ROM_CONTINUE(0x6000, 0x1000)
+	ROM_CONTINUE(0x2000, 0x1000)
+	ROM_CONTINUE(0x5000, 0x1000)
+	ROM_CONTINUE(0x8000, 0x8000)
+
+	ROM_REGION( 0x18000, "gfx1", 0 )
+	ROM_LOAD( "rom7.bin", 0x00000, 0x8000, CRC(d77d1f8b) SHA1(69761cb9cbb903b8c94ca1b3727f6c686bda1be2) )
+	ROM_LOAD( "rom6.bin", 0x08000, 0x8000, CRC(4b26ed0a) SHA1(24f56835e098f47dd92bca1c3bc13a4afeb8d58c) )
+	ROM_LOAD( "rom5.bin", 0x10000, 0x8000, CRC(b2ee065f) SHA1(a41aaa6515adfac4f6f705b8e1ff4a25cdc91e4e) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "rom4.bin", 0x0000, 0x2000, CRC(6b870b29) SHA1(d65f24817d9d45c148cb857439b46e9e75dabfe7) )
+	ROM_LOAD( "rom3.bin", 0x2000, 0x2000, CRC(8a0b205f) SHA1(3afea0464b793526bf23610cac6736a31edc7ec2) )
+	ROM_LOAD( "rom2.bin", 0x4000, 0x2000, CRC(c84dba45) SHA1(ab4ac891a23d6b9a216df046d516e868c77e8a36) )
+	ROM_LOAD( "rom1.bin", 0x6000, 0x2000, CRC(9e337e9c) SHA1(58aacc09d59f04d7686dfec1eb7621969719857f) )
+
+	ROM_REGION( 0x10000, "user1", 0 )
+	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
+
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x100, "proms2", 0 )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
 ROM_END
 
 /*
@@ -20405,13 +20909,22 @@ ROM_START( top7 )
 	ROM_REGION( 0x10000, "user1", 0 )
 	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
 
-	// PROMs not dumped for this set
 	ROM_REGION( 0x200, "proms", 0 )
-	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, BAD_DUMP CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
-	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, BAD_DUMP CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
 
 	ROM_REGION( 0x100, "proms2", 0 )
-	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, BAD_DUMP CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
 ROM_END
 
 // Minor differences from above, but legit.
@@ -20441,16 +20954,29 @@ ROM_START( top7a )
 	ROM_REGION( 0x10000, "user1", 0 )
 	ROM_FILL( 0x0000, 0x10000, 0xff )  // U53 (girl bitmaps) not populated
 
-	// PROMs not dumped for this set
 	ROM_REGION( 0x200, "proms", 0 )
-	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, BAD_DUMP CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
-	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, BAD_DUMP CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+	ROM_LOAD( "82s129.u84", 0x0000, 0x0100, CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
+	ROM_LOAD( "82s129.u79", 0x0100, 0x0100, CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
 
 	ROM_REGION( 0x100, "proms2", 0 )
-	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, BAD_DUMP CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+	ROM_LOAD( "82s129.u46", 0x0000, 0x0100, CRC(50ec383b) SHA1(ae95b92bd3946b40134bcdc22708d5c6b0f4c23e) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
 ROM_END
 
 /*
+  WAR 3
+  CHERRY BEST
+  1996
+
   WANG QL-0B V1.00 in NVRAM,
   SANGHO in GFX ROMs
 
@@ -20483,7 +21009,18 @@ ROM_START( war3cb )
 	ROM_REGION( 0x200, "proms", 0 )  // not yet dumped
 	ROM_LOAD( "prom1",   0x000, 0x100, BAD_DUMP CRC(0489b760) SHA1(78f8632b17a76335183c5c204cdec856988368b0) )
 	ROM_LOAD( "prom2",   0x100, 0x100, BAD_DUMP CRC(21eb5b19) SHA1(9b8425bdb97f11f4855c998c7792c3291fd07470) )
+
+	ROM_REGION( 0x800, "plds", 0 )
+	ROM_LOAD( "gal16v8d.f10",   0x000, 0x117, CRC(6655473e) SHA1(f7bdd98a5ec5d3fc53332c12ea81c03af02d561a) )
+	ROM_LOAD( "palce16v8h.e14", 0x200, 0x117, CRC(4dbf87ec) SHA1(338d9fabba8928e25ca39fbe717c5e6ce35b7278) )
+	ROM_LOAD( "palce16v8h.f14", 0x400, 0x117, CRC(12a5e577) SHA1(ee5ea1afef775db3a9f848b5cc5384bc10b4e349) )
+	ROM_LOAD( "palce16v8h.g13", 0x600, 0x117, CRC(deee0b94) SHA1(3682affbe803ffa8b436346f159c3818d6714d1a) )
+
+	ROM_REGION( 0x400, "plds2", 0 )  // extended PLDs (bankswitching)
+	ROM_LOAD( "peel18cv8_inside.i15",  0x000, 0x155, CRC(77eaa6fb) SHA1(33c1e00bef82b526d21e628077a8eaf96b9c1d3a) )
+	ROM_LOAD( "peel18cv8_edge.j15",    0x200, 0x155, CRC(b0395c06) SHA1(12b79dffda76c75abe30f36c74b53a87a42de735) )
 ROM_END
+
 
 ROM_START( chryangl )
 	ROM_REGION( 0x10000, "maincpu", 0 )
@@ -26474,6 +27011,37 @@ ROM_START( jpknight )  // D9503 DYNA
 	ROM_LOAD( "82s135.c11", 0x100, 0x100, CRC(17c615a5) SHA1(d7bf23402e9da25bc6d9c27f5ceb27f3143caae4) )
 ROM_END
 
+
+//  The Aladdin. Dyna, 1991
+//  V1.2U - PCB D9106
+ROM_START( aladdin ) 
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD16_WORD( "ald2_v1.2u_27c512.d15", 0x00000, 0x10000, CRC(66c638ca) SHA1(ac0e9af5cd7535e8a86573723851b987c4a80c63) )
+
+	ROM_REGION( 0x100000, "gfx", 0 )
+	ROM_LOAD( "538000_as_27c080.h2", 0x000000, 0x100000, CRC(800c6c8d) SHA1(bf8d8f05b21e6cd4f0efed1ae7b66c2d9d8f43ee) )
+
+	ROM_REGION( 0x300, "proms", 0 )
+	ROM_LOAD( "mb7114h.h14", 0x000, 0x100, CRC(a69819b8) SHA1(5818046aae387f5b137c379cc4d78a15739c71cc) )
+	ROM_LOAD( "mb7114h.h15", 0x100, 0x100, CRC(36c08918) SHA1(fa87dea8fd27c1ac7e007e2cdef77ef5eabf1a7b) )
+	ROM_LOAD( "mb7114h.h16", 0x200, 0x100, CRC(71e66913) SHA1(800b05ea8eb1bb89e933a6f44632c7ebfea52e03) )
+ROM_END
+
+//  The Aladdin. Dyna, 1991
+//  V1.1A - PCB D9106
+ROM_START( aladdina ) 
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD16_WORD( "ald2_v1.1a_27c512.d15", 0x00000, 0x10000, CRC(b13baf47) SHA1(2c45edca22add535a5cf367810ac26d84f7abd82) )
+
+	ROM_REGION( 0x100000, "gfx", 0 )
+	ROM_LOAD( "538000_as_27c080.h2", 0x000000, 0x100000, CRC(800c6c8d) SHA1(bf8d8f05b21e6cd4f0efed1ae7b66c2d9d8f43ee) )
+
+	ROM_REGION( 0x300, "proms", 0 )
+	ROM_LOAD( "mb7114h.h14", 0x000, 0x100, CRC(a69819b8) SHA1(5818046aae387f5b137c379cc4d78a15739c71cc) )
+	ROM_LOAD( "mb7114h.h15", 0x100, 0x100, CRC(36c08918) SHA1(fa87dea8fd27c1ac7e007e2cdef77ef5eabf1a7b) )
+	ROM_LOAD( "mb7114h.h16", 0x200, 0x100, CRC(71e66913) SHA1(800b05ea8eb1bb89e933a6f44632c7ebfea52e03) )
+ROM_END
+
 /*
   DYNA D9106C PCB:
   -Zilog Z0840006.
@@ -28225,41 +28793,41 @@ ROM_END
   +----+------------------------------+---------+----------+
   | 01 | Big Bull Frog.               | NO      | NO       |
   | 02 | Buffalo Bills.               | NO      | NO       |
-  | 03 | Cash Cabaret.                | NO      | NO       |
+  | 03 | Cash Cabaret.                | YES     | YES      |
   | 04 | Cash Cow.                    | NO      | NO       |
   | 05 | Cherry 50 Bonus.             | YES     | YES      |  Custom main 50, 500 & 2000.
   | 06 | Cherry 500 Bonus.            | YES     | YES      |  Custom main 50, 500 & 2000.
   | 07 | Cherry 1000 Bonus.           | YES     | YES      |  Custom main 50, 500 & 2000.
   | 08 | Christmas.                   | NO      | NO       |
-  | 09 | Deuces Wild.                 | NO      | NO       |
+  | 09 | Deuces Wild.                 | YES     | YES      |
   | 10 | Diamond Delight.             | YES     | YES      |  Different set. Custom main 50, 500 & 2000.
-  | 11 | Diamond Doubles.             | NO      | NO       |
+  | 11 | Diamond Doubles.             | YES     | YES      |
   | 12 | Diamond Treasure.            | NO      | NO       |
-  | 13 | Dream Catcher.               | NO      | NO       |
-  | 14 | Dynamite Diamonds 1.         | NO      | NO       |
+  | 13 | Dream Catcher.               | YES     | YES      |
+  | 14 | Dynamite Diamonds 1.         | YES     | YES      |
   | 15 | Dynamite Diamonds 2.         | NO      | NO       |
-  | 16 | Egyptian Gold.               | NO      | NO       |
+  | 16 | Egyptian Gold.               | YES     | YES      |
   | 17 | Gold Country.                | NO      | NO       |
-  | 18 | Golden Treasure.             | NO      | NO       |
-  | 19 | Greenbacks.                  | NO      | NO       |
-  | 20 | Harley Davidson.             | NO      | NO       |
-  | 21 | Hollywood Nights.            | YES (W4)| YES (W4) |  Flaming 7's W4 version.
-  | 22 | Independence Day.            | NO      | NO       |
-  | 23 | Jokers Wild.                 | NO      | NO       |
-  | 24 | Midnight Sevens.             | NO      | NO       |
-  | 25 | Mighty Buffalo.              | NO      | NO       |
+  | 18 | Golden Treasure.             | YES     | YES      |
+  | 19 | Greenbacks.                  | YES     | YES      |
+  | 20 | Harley Davidson.             | YES     | YES      |  Both Black and White sets.
+  | 21 | Hollywood Nights.            | YES     | YES      |  Both Flaming 7's W4 and custom versions.
+  | 22 | Independence Day.            | YES     | YES      |
+  | 23 | Jokers Wild.                 | YES     | YES      |
+  | 24 | Midnight Sevens.             | YES     | YES      |
+  | 25 | Mighty Buffalo.              | YES     | YES      |
   | 26 | Money.                       | NO      | NO       |
-  | 27 | Moola.                       | NO      | NO       |
+  | 27 | Moolah.                      | YES     | YES      |
   | 28 | New Year's.                  | NO      | NO       |
-  | 29 | Prospector's Gold.           | NO      | NO       |
-  | 30 | Red Hot Ice.                 | NO      | NO       |
-  | 31 | Red, White & Blue 7's.       | YES (W4)| YES (W4) |  Flaming 7's W4 version.
-  | 32 | Rising Star.                 | NO      | NO       |
+  | 29 | Prospector's Gold.           | YES     | YES      |
+  | 30 | Red Hot Ice.                 | YES     | YES      |
+  | 31 | Red, White & Blue 7's.       | YES     | YES      |  Both Flaming 7's W4 and custom versions.
+  | 32 | Rising Star.                 | YES     | YES      |
   | 33 | Rockin' Reels.               | NO      | NO       |
   | 34 | Rolling Thunder.             | NO      | NO       |
   | 35 | Soboba Gold.                 | NO      | NO       |
-  | 36 | Star Sevens / American Gold. | NO      | NO       |
-  | 37 | Sun God.                     | NO      | NO       |
+  | 36 | Star Sevens / American Gold. | YES     | YES      |
+  | 37 | Sun God.                     | YES     | YES      |
   | 38 | Super Stars & Stripes.       | NO      | NO       |
   | 39 | Sweet Dreams.                | NO      | NO       |
   | 40 | Sweethearts & Sevens.        | NO      | NO       |
@@ -28268,11 +28836,57 @@ ROM_END
   | 43 | White Buffalo.               | NO      | NO       |
   | 44 | Wild Thing.                  | NO      | NO       |
   | 45 | Wild Watermelons.            | NO      | NO       |
-  | 46 | Wild West.                   | NO      | NO       |
+  | 46 | Wild West.                   | YES     | YES      |
   +----+------------------------------+---------+----------+
 
-  Will name the sets using the internal code of both custom
-  graphics sets in their respective order...
+  These graphics upgrades are sold in packages, sometimes sharing
+  a couple of these new titles. There are two EPROMs sizes available
+  (27c256 and 27c512, depending of the target hardware). The 27c512
+  contains twice the 27c256 data inside, or just store the 27c256 data
+  in the second half.
+
+  Will present the existent packed sets in the following table:
+
+  +----+-----------------------------------------------------------------------+---------+----------+
+  | N# | Title:                                                                | Dumped  | Emulated |
+  +----+-----------------------------------------------------------------------+---------+----------+
+  | 01 | American Gold, Star Sevens, Cherry Bonus, Nevada Numbers              | YES     | YES      |
+  | 02 | Black Bart, Diamonds 7's, Cherry Bonus, Nevada Numbers                | YES     | YES      |
+  | 03 | Cash Cabaret, Wild West, Cherry Bonus, Nevada Numbers                 | YES     | YES      |
+  | 04 | Diamond Delight II, Diamonds 7's, Cherry Bonus, Nevada Numbers        | YES     | YES      |
+  | 05 | Diamond Double, Diamonds 7's, Cherry Bonus, Nevada Numbers            | YES     | YES      |
+  | 06 | Dream Catcher, Diamonds 7's, Cherry Bonus, Nevada Numbers             | YES     | YES      |
+  | 07 | Egyptian Gold, Diamonds 7's, Cherry Bonus, Nevada Numbers             | YES     | YES      |
+  | 08 | Flaming 7's, Diamonds 7's, Cherry Bonus, Nevada Numbers               | YES     | YES      |
+  | 09 | Golden Treasure, Flaming 7's #2, Cherry Bonus, Nevada Numbers         | YES     | YES      |
+  | 10 | Greenbacks, Lucky Shamrock, Red White & Blue 7's, Nevada Numbers      | YES     | YES      |
+  | 11 | Harley Davidson Black, Diamonds 7's, Cherry Bonus, Nevada Numbers     | YES     | YES      |
+  | 12 | Harley Davidson White, Diamonds 7's, Cherry Bonus, Nevada Numbers     | YES     | YES      |
+  | 13 | Hollywood Nights, Dynamite Diamonds, Cherry Bonus, Nevada Numbers     | YES     | YES      |
+  | 14 | House of Fury, Diamonds 7's, Cherry Bonus, Nevada Numbers             | YES     | YES      |
+  | 15 | Independence Day, Diamonds 7's, Cherry Bonus, Nevada Numbers          | YES     | YES      |
+  | 16 | Infinity, Diamond Doubles, Cherry Bonus, All Sevens                   | YES     | YES      |
+  | 17 | Jackpot Junction, Diamonds 7's, Cherry Bonus, Nevada Numbers          | YES     | YES      |
+  | 18 | Jokers Wild, Deuces Wild, Cherry Bonus, Nevada Numbers                | YES     | YES      |
+  | 19 | Konocti Gold, Bar TNT, Cherry Bonus, Nevada Numbers                   | YES     | YES      |
+  | 20 | Midnight 7's, Diamonds 7's, Cherry Bonus, Nevada Numbers              | YES     | YES      |
+  | 21 | Mighty Buffalo, Diamonds 7's, Cherry Bonus, Nevada Numbers            | YES     | YES      |
+  | 22 | Moolah, Diamonds 7's, Cherry Bonus, Nevada Numbers                    | YES     | YES      |
+  | 23 | Moon Over SA, Diamonds 7's, Cherry Bonus, Nevada Numbers              | YES     | YES      |
+  | 24 | Sturgeon 7's, Native American Gold, Cherry Bonus, Nevada Numbers      | YES     | YES      |
+  | 25 | Native Nickels, Diamonds 7's, Cherry Bonus, Nevada Numbers            | YES     | YES      |
+  | 26 | Native Nickels, Sun God, Cherry Bonus, Nevada Numbers                 | YES     | YES      |
+  | 27 | Palace of Riches, Diamonds 7's, Cherry Bonus, Nevada Numbers          | YES     | YES      |
+  | 28 | Phantom, Diamonds 7's, Cherry Bonus, Nevada Numbers                   | YES     | YES      |
+  | 29 | Prospector's Gold, Red Hot Ice, Cherry Bonus, Nevada Numbers          | YES     | YES      |
+  | 30 | Prospector's Gold, Red White & Blue 7's, Cherry Bonus, Nevada Numbers | YES     | YES      |
+  | 31 | Red Hot Ice, Red White & Blue 7's, Cherry Bonus, Nevada Numbers       | YES     | YES      |
+  | 32 | Rising Star, Trophy Bucks, Cherry Bonus, Nevada Numbers               | YES     | YES      |
+  +----+-----------------------------------------------------------------------+---------+----------+
+
+  We will name the sets using the order of appearance and availability
+  of both sets of custom graphics respectively.
+
 
   -------------------------------------------------------------------
 
@@ -28558,6 +29172,9 @@ ROM_END
 
   Custom Hardware Notes:
 
+  The hardware uses 1-wire Dallas iButton DS1994L-F5 instead of the W4 3-wires
+  Dallas DS2401.
+
   To initialize the game the first time, enter BOOKS/STATS/SETUP (Key 0),
   and advance through the menus with RESET key (key R). When finish press
   again BOOKS/STATS/SETUP (Key 0) to exit the setup mode.
@@ -28587,6 +29204,7 @@ ROM_END
   The chars/text graphics are properly decodes, but texts strings
   look bad in the game.
 
+
 *******************************************************************************************/
 
 /*
@@ -28609,7 +29227,7 @@ ROM_END
   navigate between pages. Press BOOKS/STATS/SETUP (key 0) to exit the Bookkeeping mode.
 
 */
-ROM_START( fl7_3121 )  // Red, White & Blue 7's + Hollywood Nights. Serial 7D063B800000.
+ROM_START( fl7_3121 )  // Red, White & Blue 7's + Hollywood Nights. Serial 7D063B000000.
 	ROM_REGION( 0x8000, "maincpu", 0 )
 	ROM_LOAD( "main.14b",  0x0000, 0x8000, CRC(5756e927) SHA1(5448e1ca4ae060b086145eee10b8dc6eb05acc56) )
 
@@ -28664,8 +29282,8 @@ ROM_START( fl7_50 )  // Serial 00000069A1C9.
 	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
 	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
 
-	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial
-	ROM_LOAD( "eserial.bin", 0x0000, 0x0008, NO_DUMP )  // Hand built to match our ROM set
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
 ROM_END
 
 /*
@@ -28691,8 +29309,8 @@ ROM_START( fl7_500 )  // Serial 000000125873.
 	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
 	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
 
-	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial
-	ROM_LOAD( "eserial.bin",  0x0000, 0x0008, NO_DUMP )  // Hand built to match our ROM set
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_500.bin", 0x0000, 0x0008, CRC(b34d646f) SHA1(bcd6c4475412ecb1904b6732cf44e8f6bfce9d90) )
 ROM_END
 
 /*
@@ -28717,8 +29335,8 @@ ROM_START( fl7_1000 )  // Serial 00000031A9EE
 	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
 	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
 
-	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial
-	ROM_LOAD( "eserial.bin",  0x0000, 0x0008, NO_DUMP )  // Hand built to match our ROM set
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_1000.bin", 0x0000, 0x0008, CRC(57688fe9) SHA1(cdbf7f7fee341dcf45a67b6ba8d655ff4ad5f91e) )
 ROM_END
 
 /*
@@ -28744,8 +29362,8 @@ ROM_START( fl7_2000 )  // Serial 00000063A47F.
 	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
 	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
 
-	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial
-	ROM_LOAD( "eserial.bin", 0x0000, 0x0008, NO_DUMP )  // Hand built to match our ROM set
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_2000.bin", 0x0000, 0x0008, CRC(f2f21ec8) SHA1(e815a8611da547ff994e0bd458598fcdb9d9e309) )
 ROM_END
 
 
@@ -28772,8 +29390,936 @@ ROM_START( fl7_2k16 )  // Serial 000000743111.
 	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
 	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
 
-	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial
-	ROM_LOAD( "eserial.bin", 0x0000, 0x0008, NO_DUMP )  // Hand built to match our ROM set
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_2k16.bin", 0x0000, 0x0008, CRC(81dae5e5) SHA1(892d33aa30c03cf1f41213e315c37a75a2a228be) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS01: American Gold - Star Sevens - Cherry Bonus - Nevada Numbers.
+
+*/
+ROM_START( fl7_50_gs01 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs01.u3",   0x0000, 0x8000, CRC(d86573be) SHA1(c3c42d560082137acf874b32a901eabef132997b) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS02: Black Bart, Diamonds 7's, Cherry Bonus, Nevada Numbers)
+
+*/
+ROM_START( fl7_50_gs02 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs02.u3",   0x0000, 0x8000, CRC(4f086324) SHA1(a68b0c271fdbc5b9c8b555ce958dd3555ab2c04e) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS03: Cash Cabaret, Wild West, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs03 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs03.u3",   0x0000, 0x8000, CRC(8c030a13) SHA1(4e1afb5a01fae53c4495496e75865f2d66606a17) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS04: Diamond Delight II, Diamonds 7's, Cherry Bonus, Nevada Numbers)
+
+*/
+ROM_START( fl7_50_gs04 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs04.u3",   0x0000, 0x8000, CRC(d1c9b69e) SHA1(35458b92c93ec5e675736bf723b7666ad1dff4aa) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS05: Diamond Double, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs05 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs05.u3",   0x0000, 0x8000, CRC(911605b3) SHA1(6ed32cfcd9e3892d87008f54096d42f64be2448c) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS06: Dream Catcher, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs06 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs06.u3",   0x0000, 0x8000, CRC(6eae4506) SHA1(1a5b0ec1213f04d2f8b94d6557b8c1b49de0c4dc) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS07: Egyptian Gold, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs07 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "fl7_gs07.u6",  0x00000, 0x20000, CRC(5a2157bb) SHA1(2b170102caf1224df7a6d33bb84d19114f453d89) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs07.u3",   0x0000, 0x8000, CRC(11241dae) SHA1(7197813304623c022dc37aa603c0cb067c8bf1fd) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS08: Flaming 7's, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs08 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs08.u3",   0x0000, 0x8000, CRC(cfc8f3e2) SHA1(7dd72e3ffb0904776f3c07635b953e72f4c63068) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS09: Golden Treasure, Flaming 7's #2, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs09 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs09.u3",   0x0000, 0x8000, CRC(3bc762ce) SHA1(b5179c74fad7355f16fb37000d990ee1369632dc) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS10: Greenbacks, Lucky Shamrock, Red White & Blue 7's, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs10 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs10.u3",   0x0000, 0x8000, CRC(4b6090cd) SHA1(cd2aafbd1ad119b67444b72e561822a9801ab928) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS11: Harley Davidson Black, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs11 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs11.u3",   0x0000, 0x8000, CRC(dfa8d16a) SHA1(fb8647da54901431beac627618733fe11c5d02f0) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS12: Harley Davidson White, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs12 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs12.u3",   0x0000, 0x8000, CRC(c38835e0) SHA1(e6528fb9f7084e6f6b6a5faf6ffd434010b831dd) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS13: Hollywood Nights, Dynamite Diamonds, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs13 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs13.u3",   0x0000, 0x8000, CRC(20a3b972) SHA1(7e1b7b617090821521b634a9bbbe4087ff54ecf9) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS14: House of Fury, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs14 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs14.u3",   0x0000, 0x8000, CRC(574b849e) SHA1(0ce2b1ce9d8684b1b2047f494bdb0ccfa3a7d58a) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS15: Independence Day, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs15 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs15.u3",   0x0000, 0x8000, CRC(a45c6616) SHA1(8defce87f9470a9fff25e9b89d0609dccb92acd8) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS16: Infinity, Diamond Doubles, Cherry Bonus, All Sevens
+
+*/
+ROM_START( fl7_50_gs16 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs16.u3",   0x0000, 0x8000, CRC(3eef065a) SHA1(217e6c291405e6d958f9a7f93609e83c3e443e8a) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS17: Jackpot Junction, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs17 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs17.u3",   0x0000, 0x8000, CRC(2ef9479d) SHA1(bfa198e2121444106dbcdbb41030e4c2a587cad5) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS18: Jokers Wild, Deuces Wild, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs18 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs18.u3",   0x0000, 0x8000, CRC(501b1461) SHA1(8907d587c473ff60008c4bac49b21d8e1e7ac2cd) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS19: Konocti Gold, Bar TNT, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs19 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs19.u3",   0x0000, 0x8000, CRC(c4148f31) SHA1(43e15bca3c1c4bf908809bf888dbc59d00920ba2) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS20: Midnight 7's, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs20 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs20.u3",   0x0000, 0x8000, CRC(9d39a26d) SHA1(6d972de00d0d37a128b2176e5ce9b2aeacacbcdb) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS21: Mighty Buffalo, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs21 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs21.u3",   0x0000, 0x8000, CRC(4425e015) SHA1(3bb62abf809b91a00aaac8cf7dd623698eeea2bc) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS22: Moolah, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs22 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs22.u3",   0x0000, 0x8000, CRC(080f43a8) SHA1(5673e1a80457e3667022c2f81b4ac7cff48f97e4) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS23: Moon Over SA, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs23 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs23.u3",   0x0000, 0x8000, CRC(a82b7646) SHA1(fa172566a23c8852a277332e75472eeaad531448) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS24: Sturgeon 7's, Native American Gold, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs24 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs24.u3",   0x0000, 0x8000, CRC(4e5fceb9) SHA1(9fdc6f8c46c2f34340395b1ed6f21fc0843309e9) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS25: Native Nickels, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs25 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs25.u3",   0x0000, 0x8000, CRC(c8408a85) SHA1(e0fb7390541db4d4d4e36aadc7c2e2e3668541c7) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS26: Native Nickels, Sun God, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs26 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs26.u3",   0x0000, 0x8000, CRC(454702d9) SHA1(c700b8151df81b7d5bc129574183b102ebd43e9e) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS27: Palace of Riches, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs27 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs27.u3",   0x0000, 0x8000, CRC(7c47f2b2) SHA1(a0d7afa7af68e2a2206a7c17fb02d65ca71afa13) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS28: Phantom, Diamonds 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs28 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs28.u3",   0x0000, 0x8000, CRC(67792bb7) SHA1(fe0fc827db976cb34def0bb2d4058be36beb17bc) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS29: Prospector's Gold, Red Hot Ice, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs29 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "fl7_gs29.u6",  0x00000, 0x20000, CRC(5a2157bb) SHA1(2b170102caf1224df7a6d33bb84d19114f453d89) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs29.u3",  0x0000, 0x8000, CRC(6a53384e) SHA1(c4f88e8cb4f3d79fd4af46a732d7fce06410a983) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS30: Prospector's Gold, Red White & Blue 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs30 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "fl7_gs30.u6",  0x00000, 0x20000, CRC(5a2157bb) SHA1(2b170102caf1224df7a6d33bb84d19114f453d89) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs30.u3",  0x0000, 0x8000, CRC(75921001) SHA1(6574c262d6a1b14c543bbd0ca6a9213094c30bd7) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS31: Red Hot Ice, Red White & Blue 7's, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs31 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs31.u3",  0x0000, 0x8000, CRC(e7e8090e) SHA1(009ab188c5a4b5186735a8c1cac1a479d1994ea5) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
+ROM_END
+
+/*
+  Flaming 7's
+  Cyberdyne Systems.
+
+  Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus.
+  Custom Hardware.
+
+  GS32: Rising Star, Trophy Bucks, Cherry Bonus, Nevada Numbers
+
+*/
+ROM_START( fl7_50_gs32 )
+	ROM_REGION( 0x8000, "maincpu", 0 )  // Serial 00000069A1C9.
+	ROM_LOAD( "50-main.u22",  0x0000, 0x8000, CRC(e097e317) SHA1(a903144cc2290b7e22045490784b592adbf9ba97) )
+
+	ROM_REGION( 0x20000, "gfx1", 0 )
+	ROM_LOAD( "27c1001.u6",  0x00000, 0x20000, CRC(00eac3c1) SHA1(1a955f8bc044e17f0885b4b126a66d7ad191e410) )
+
+	ROM_REGION( 0x8000, "gfx2", 0 )
+	ROM_LOAD( "fl7_gs32.u3",  0x0000, 0x8000, CRC(79270e42) SHA1(11ef4728572b6997008dae4144443a4124bfdf27) )
+
+	// Proper bipolar PROM dump
+	ROM_REGION( 0x200, "proms", 0 )
+	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
+	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
+
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_50.bin", 0x0000, 0x0008, CRC(a300a20f) SHA1(2fd78faf792c59225eb124ebc736a0bebc3b2902) )
 ROM_END
 
 
@@ -28799,8 +30345,8 @@ ROM_START( fl7_tw )  // Serial 00000050E9B7.
 	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
 	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
 
-	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial
-	ROM_LOAD( "eserial.bin", 0x0000, 0x0008, NO_DUMP )  // Hand built to match our ROM set
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_tw.bin", 0x0000, 0x0008, CRC(c88b5fc9) SHA1(672472f1b7b49175640905985b017912c8be91c5) )
 ROM_END
 
 ROM_START( fl7_twa )  // Serial 00000014D7A1.
@@ -28818,8 +30364,8 @@ ROM_START( fl7_twa )  // Serial 00000014D7A1.
 	ROM_LOAD( "am27s29.u1", 0x0000, 0x0100, CRC(3fe7e369) SHA1(cf4ae287cb58581a4bf9e9ff1994426461fb38cc) )
 	ROM_CONTINUE(           0x0000, 0x0100)  // palette data is stored in the second half.
 
-	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial
-	ROM_LOAD( "eserial.bin", 0x0000, 0x0008, NO_DUMP )  // Hand built to match our ROM set
+	ROM_REGION(0x8, "fl7w4_id", 0)  // Electronic Serial. Hand built to match our ROM set
+	ROM_LOAD( "ds1994l-f5_twa.bin", 0x0000, 0x0008, CRC(38663b49) SHA1(ae2733e7a5ad70030592edf2a35c1bca35a6af85) )
 ROM_END
 
 
@@ -31327,8 +32873,8 @@ void wingco_state::init_flaming7()
           just patched to jump to $5D80 (jmp $6115)
           where the check is succesfull.
 */
-	uint8_t *rom = memregion("maincpu")->base();
-	rom[0x5d7a] = 0x05;
+//	uint8_t *rom = memregion("maincpu")->base();
+//	rom[0x5d7a] = 0x05;
 }
 
 /*
@@ -31346,8 +32892,8 @@ void wingco_state::init_flam7_tw()
           Just patched to jump to $60B9 (jmp $644E) where the check
           is successful.
 */
-	uint8_t *rom = memregion("maincpu")->base();
-	rom[0x60b3] = 0x05;
+//	uint8_t *rom = memregion("maincpu")->base();
+//	rom[0x60b3] = 0x05;
 }
 
 void wingco_state::init_special7()
@@ -31954,8 +33500,10 @@ GAMEL( 1991, eldoraddoab, eldoradd, animalhs, eldoradoa, cmaster_state, init_eld
 GAMEL( 1991, animalhs,    0,        animalhs, animalhs,  cmaster_state, init_animalhs,   ROT0, "Suns Co Ltd.",     "Animal House (V1.0, set 1)",                 0,                 layout_animalhs )
 GAMEL( 1991, animalhsa,   animalhs, animalhs, animalhs,  cmaster_state, init_animalhs,   ROT0, "Suns Co Ltd.",     "Animal House (V1.0, set 2)",                 0,                 layout_animalhs )
 
-// Dyna D9106C PCB
+// Dyna D9106/D9106C PCB
 GAME(  1991, eldoradd,   0,        eldoradd, cmast91,  cmaster_state,  empty_init,     ROT0, "Dyna",              "El Dorado (V5.1DR)",                          MACHINE_NOT_WORKING ) // different GFX hw? Game is running and sounds play
+GAME(  1991, aladdin,    0,        eldoradd, cmast91,  cmaster_state,  empty_init,     ROT0, "Dyna",              "The Aladdin (V1.2U)",                         MACHINE_NOT_WORKING ) // different GFX hw?
+GAME(  1991, aladdina,   aladdin,  eldoradd, cmast91,  cmaster_state,  empty_init,     ROT0, "Dyna",              "The Aladdin (V1.1A)",                         MACHINE_NOT_WORKING ) // different GFX hw?
 
 // Dyna D9105 PCB
 GAME(  1991, eldoraddo,  eldoradd, eldoradd, cmast91,  cmaster_state,  empty_init,     ROT0, "Dyna",              "El Dorado (V1.1TA)",                          MACHINE_NOT_WORKING ) // different GFX hw?
@@ -31973,9 +33521,19 @@ GAMEL( 1996, cmast97b,   cmast97,  cmast97,  cmast97a, cmast97_state,  empty_ini
 GAMEL( 1996, cmast97i,   cmast97,  cmast97,  cmast97i, cmast97_state,  empty_init,     ROT0, "Dyna",              "Cheri Mondo '97 (V1.4I)",                     0,    layout_cmast97 )
 GAMEL( 1997, jpknight,   0,        jpknight, cmast97a, cmast97_state,  empty_init,     ROT0, "Dyna / R-Stone",    "Jackpot Knight (V1.1)",                       0,    layout_cmast97 ) // check inputs
 
-GAME(  1999, cmast99,    0,        cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "Dyna",              "Cherry Master '99 (V9B.00)",                  MACHINE_NOT_WORKING )
-GAME(  1999, cmast99b,   cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Cherry Master '99 (V9B.00 bootleg / hack)",   MACHINE_NOT_WORKING )
-GAME(  1993, aplan,      0,        cm,       cmast99,  cmaster_state,  init_cmv4,      ROT0, "WeaShing H.K.",     "A-Plan",                                      MACHINE_NOT_WORKING )
+// Dyna CM99 hardware (dynamic banking)
+GAMEL( 1999, cmast99,    0,        cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "Dyna",              "Cherry Master '99 (QL-1 V9B.00)",             MACHINE_NOT_WORKING,     layout_cmv4 )
+GAMEL( 1999, cmast99b,   cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Cherry Master '99 (QQ-1 V9B.00, bootleg)",    MACHINE_NOT_WORKING,     layout_cmv4 )
+GAMEL( 1999, cmast99c,   cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Cherry Master '99 (QQ-1 V9B.00, Cleco)",      MACHINE_NOT_WORKING,     layout_cmv4 )
+GAMEL( 1999, cmast99d,   cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Cherry Master '99 (QL-1 V9B.00, USA long PCB)", MACHINE_NOT_WORKING,   layout_cmv4 )
+GAMEL( 1999, cmast99hc,  cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Cherry Master '99 (QL-1 V9B.00, Cleco, Hand Count?)", MACHINE_NOT_WORKING, layout_cmv4 ) // different bankswitching? see the ROM load notes
+GAMEL( 1998, texas99,    cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Texas '99 (QL-1 V9B.00)",                     MACHINE_NOT_WORKING,     layout_cmv4 ) // similar to cmast99 
+GAMEL( 1998, texas99b,   cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Texas '99 (QQ-1 V9B.00, bootleg)",            MACHINE_NOT_WORKING,     layout_cmv4 ) // similar to cmast99b 
+GAMEL( 1998, texas99c,   cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Texas '99 (QQ-1 V9B.00, Cleco)",              MACHINE_NOT_WORKING,     layout_cmv4 )
+GAMEL( 1998, texas99d,   cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Texas '99 (QL-1 V9B.00, USA long PCB)",       MACHINE_NOT_WORKING,     layout_cmv4 ) 
+GAMEL( 1998, texas99e,   cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "Kolom",             "New Texas '99 (QL-1 V9B.00, Kolom V1)",       MACHINE_NOT_WORKING,     layout_cmv4 ) // DB with MCU... see the ROM load notes 
+GAMEL( 1998, texas99hc,  cmast99,  cm99,     cmast99,  cmaster_state,  init_cm99,      ROT0, "bootleg",           "Texas '99 (QL-1 V9B.00, Cleco, Hand Count?)", MACHINE_NOT_WORKING,     layout_cmv4 ) // different bankswitching? see the ROM load notes
+GAME(  1993, aplan,      0,        cm,       cmast99,  cmaster_state,  init_cmv4,      ROT0, "WeaShing H.K.",     "A-Plan",                                      MACHINE_NOT_WORKING ) // doesn't boot, not investigated yet
 GAME(  1999, top7,       0,        cm,       cmast99,  cmaster_state,  empty_init,     ROT0, "bootleg (UTech)",   "Top-7 (V8.8, set 1)",                         MACHINE_NOT_WORKING ) // doesn't boot, not investigated yet
 GAME(  1999, top7a,      top7,     cm,       cmast99,  cmaster_state,  empty_init,     ROT0, "bootleg (UTech)",   "Top-7 (V8.8, set 2)",                         MACHINE_NOT_WORKING ) // doesn't boot, not investigated yet
 GAME(  1996, war3cb,     0,        cm,       cmast99,  cmaster_state,  empty_init,     ROT0, "S.B.E.",            "War III Cherry Best",                         MACHINE_NOT_WORKING ) // different portmap?
@@ -32045,14 +33603,50 @@ GAME(  2002, mbs2euro,   0,        mbstar,   mbstar,   wingco_state,   init_mbs2
 // --- Flaming 7's hardware (W-4 custom derivative) ---
 GAME(  199?, fl7_3121,   0,        flam7_w4, flam7_w4, wingco_state,   init_fl7_3121,  ROT0, "Cyberdyne Systems", "Flaming 7's (W4 Hardware, prg 5XXXX V6 01A, Red, White & Blue 7's + Hollywood Nights)",  0 )
 
+// --- Flaming 7's hardware (original custom hardware) ---
 GAME(  199?, fl7_50,     0,        flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (Cyberdyne Systems 7V5.00 (CYB1092), 50 bonus)",   0 )
 GAME(  199?, fl7_500,    fl7_50,   flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (Cyberdyne Systems 7V5.00 (CB500), 500 bonus)",    0 )
 GAME(  199?, fl7_1000,   fl7_50,   flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (Cyberdyne Systems 7V5.00 (CB1000), 1000 bonus)",  0 )
 GAME(  199?, fl7_2000,   fl7_50,   flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (Cyberdyne Systems 7V5.00 (CYB1092), 2000 bonus)", 0 )
 GAME(  199?, fl7_2k16,   fl7_50,   flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (Cyberdyne Systems 7V5.00 (CYB1092), 2000 bonus, Egyptian Gold edition)", 0 )
 
+// --- Flaming 7's hardware (taiwanese hardware) ---
 GAME(  199?, fl7_tw,     fl7_50,   flam7_tw, flaming7, wingco_state,   init_flam7_tw,  ROT0, "Cyberdyne Systems", "Flaming 7's (Taiwanese Hardware, v7.3)",                   0 )
 GAME(  199?, fl7_twa,    fl7_50,   flam7_tw, flaming7, wingco_state,   init_flam7_tw,  ROT0, "Cyberdyne Systems", "Flaming 7's (Taiwanese Hardware, v6.5)",                   0 )
+
+// --- Flaming 7's hardware (original upgrade graphics sets) ---
+GAME(  199?, fl7_50_gs01, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS01: American Gold, Star Sevens, Cherry Bonus, Nevada Numbers)",              0 )
+GAME(  199?, fl7_50_gs02, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS02: Black Bart, Diamonds 7's, Cherry Bonus, Nevada Numbers)",                0 )
+GAME(  199?, fl7_50_gs03, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS03: Cash Cabaret, Wild West, Cherry Bonus, Nevada Numbers)",                 0 )
+GAME(  199?, fl7_50_gs04, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS04: Diamond Delight II, Diamonds 7's, Cherry Bonus, Nevada Numbers)",        0 )
+GAME(  199?, fl7_50_gs05, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS05: Diamond Double, Diamonds 7's, Cherry Bonus, Nevada Numbers)",            0 )
+GAME(  199?, fl7_50_gs06, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS06: Dream Catcher, Diamonds 7's, Cherry Bonus, Nevada Numbers)",             0 )
+GAME(  199?, fl7_50_gs07, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS07: Egyptian Gold, Diamonds 7's, Cherry Bonus, Nevada Numbers)",             0 )
+GAME(  199?, fl7_50_gs08, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS08: Flaming 7's, Diamonds 7's, Cherry Bonus, Nevada Numbers)",               0 )
+GAME(  199?, fl7_50_gs09, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS09: Golden Treasure, Flaming 7's #2, Cherry Bonus, Nevada Numbers)",         0 )
+GAME(  199?, fl7_50_gs10, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS10: Greenbacks, Lucky Shamrock, Red White & Blue 7's, Nevada Numbers)",      0 )
+GAME(  199?, fl7_50_gs11, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS11: Harley Davidson Black, Diamonds 7's, Cherry Bonus, Nevada Numbers)",     0 )
+GAME(  199?, fl7_50_gs12, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS12: Harley Davidson White, Diamonds 7's, Cherry Bonus, Nevada Numbers)",     0 )
+GAME(  199?, fl7_50_gs13, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS13: Hollywood Nights, Dynamite Diamonds, Cherry Bonus, Nevada Numbers)",     0 )
+GAME(  199?, fl7_50_gs14, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS14: House of Fury, Diamonds 7's, Cherry Bonus, Nevada Numbers)",             0 )
+GAME(  199?, fl7_50_gs15, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS15: Independence Day, Diamonds 7's, Cherry Bonus, Nevada Numbers)",          0 )
+GAME(  199?, fl7_50_gs16, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS16: Infinity, Diamond Doubles, Cherry Bonus, All Sevens)",                   0 )
+GAME(  199?, fl7_50_gs17, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS17: Jackpot Junction, Diamonds 7's, Cherry Bonus, Nevada Numbers)",          0 )
+GAME(  199?, fl7_50_gs18, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS18: Jokers Wild, Deuces Wild, Cherry Bonus, Nevada Numbers)",                0 )
+GAME(  199?, fl7_50_gs19, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS19: Konocti Gold, Bar TNT, Cherry Bonus, Nevada Numbers)",                   0 )
+GAME(  199?, fl7_50_gs20, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS20: Midnight 7's, Diamonds 7's, Cherry Bonus, Nevada Numbers)",              0 )
+GAME(  199?, fl7_50_gs21, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS21: Mighty Buffalo, Diamonds 7's, Cherry Bonus, Nevada Numbers)",            0 )
+GAME(  199?, fl7_50_gs22, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS22: Moolah, Diamonds 7's, Cherry Bonus, Nevada Numbers)",                    0 )
+GAME(  199?, fl7_50_gs23, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS23: Moon Over SA, Diamonds 7's, Cherry Bonus, Nevada Numbers)",              0 )
+GAME(  199?, fl7_50_gs24, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS24: Sturgeon 7's, Native American Gold, Cherry Bonus, Nevada Numbers)",      0 )
+GAME(  199?, fl7_50_gs25, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS25: Native Nickels, Diamonds 7's, Cherry Bonus, Nevada Numbers)",            0 )
+GAME(  199?, fl7_50_gs26, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS26: Native Nickels, Sun God, Cherry Bonus, Nevada Numbers)",                 0 )
+GAME(  199?, fl7_50_gs27, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS27: Palace of Riches, Diamonds 7's, Cherry Bonus, Nevada Numbers)",          0 )
+GAME(  199?, fl7_50_gs28, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS28: Phantom, Diamonds 7's, Cherry Bonus, Nevada Numbers)",                   0 )
+GAME(  199?, fl7_50_gs29, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS29: Prospector's Gold, Red Hot Ice, Cherry Bonus, Nevada Numbers)",          0 )
+GAME(  199?, fl7_50_gs30, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS30: Prospector's Gold, Red White & Blue 7's, Cherry Bonus, Nevada Numbers)", 0 )
+GAME(  199?, fl7_50_gs31, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS31: Red Hot Ice, Red White & Blue 7's, Cherry Bonus, Nevada Numbers)",       0 )
+GAME(  199?, fl7_50_gs32, fl7_50,  flaming7, flaming7, wingco_state,   init_flaming7,  ROT0, "Cyberdyne Systems", "Flaming 7's (50 bonus, GS32: Rising Star, Trophy Bucks, Cherry Bonus, Nevada Numbers)",               0 )
 
 // special 7 sets
 GAME(  199?, special7,   0,        flam7_tw, flaming7, wingco_state,   init_special7,  ROT0, "unknown",           "Special 7 (Taiwanese Hardware, encrypted, set 1)",         0 )
