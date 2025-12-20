@@ -2235,6 +2235,9 @@ void hng64_state::machine_start()
 	save_item(NAME(m_raster_irq_pos));
 
 	save_item(NAME(m_texture_wrapsize_table));
+
+	m_wheel_motor.resolve();
+	m_lamps_out.resolve();
 }
 
 TIMER_CALLBACK_MEMBER(hng64_state::comhack_callback)
@@ -2339,6 +2342,11 @@ void hng64_lamps_device::device_start()
 {
 }
 
+void hng64_lamps_device::lamps_w(offs_t offset, u8 data)
+{
+	m_lamps_out_cb[offset](data);
+}
+
 void hng64_state::drive_lamps7_w(u8 data)
 {
 	/*
@@ -2351,6 +2359,8 @@ void hng64_state::drive_lamps7_w(u8 data)
 	   0x02
 	   0x01
 	*/
+	for (int i = 0; i < 2; i++)
+		m_lamps_out[i] = BIT(data, i + 6);
 }
 
 void hng64_state::drive_lamps6_w(u8 data)
@@ -2366,11 +2376,15 @@ void hng64_state::drive_lamps6_w(u8 data)
 	   0x01 - Coin Counter #1
 	*/
 	machine().bookkeeping().coin_counter_w(0, BIT(data, 0));
+
+	for (int i = 0; i < 6; i++)
+		m_lamps_out[i + 2] = BIT(data, i + 2);
 }
 
 void hng64_state::drive_lamps5_w(u8 data)
 {
 	// force feedback steering position
+	m_wheel_motor = data;
 }
 
 void hng64_state::shoot_lamps7_w(u8 data)
@@ -2584,7 +2598,6 @@ void hng64_state::hng64(machine_config &config)
 	PALETTE(config, m_palette_fade1).set_format(palette_device::xRGB_888, 0x1000);
 	PALETTE(config, m_palette_3d).set_format(palette_device::xRGB_888, 0x1000 * 0x10);
 
-	hng64_audio(config);
 	hng64_network(config);
 
 	tmp87ph40an_device &iomcu(TMP87PH40AN(config, m_iomcu, 8_MHz_XTAL));
@@ -2624,6 +2637,7 @@ void hng64_state::hng64(machine_config &config)
 void hng64_state::hng64_default(machine_config &config)
 {
 	hng64(config);
+	hng64_audio(config);
 
 	hng64_lamps_device &lamps(HNG64_LAMPS(config, m_lamps, 0));
 	lamps.lamps_out_cb<0>().set(FUNC(hng64_state::default_lamps_w<0>));
@@ -2639,6 +2653,7 @@ void hng64_state::hng64_default(machine_config &config)
 void hng64_state::hng64_drive(machine_config &config)
 {
 	hng64(config);
+	hng64_audio(config);
 
 	hng64_lamps_device &lamps(HNG64_LAMPS(config, m_lamps, 0));
 	lamps.lamps_out_cb<5>().set(FUNC(hng64_state::drive_lamps5_w)); // force feedback steering
@@ -2649,6 +2664,7 @@ void hng64_state::hng64_drive(machine_config &config)
 void hng64_state::hng64_shoot(machine_config &config)
 {
 	hng64(config);
+	hng64_audio_bbust2(config);
 
 	hng64_lamps_device &lamps(HNG64_LAMPS(config, m_lamps, 0));
 	lamps.lamps_out_cb<6>().set(FUNC(hng64_state::shoot_lamps6_w)); // start lamps (some missing?!)
@@ -2658,6 +2674,7 @@ void hng64_state::hng64_shoot(machine_config &config)
 void hng64_state::hng64_fight(machine_config &config)
 {
 	hng64(config);
+	hng64_audio(config);
 
 	hng64_lamps_device &lamps(HNG64_LAMPS(config, m_lamps, 0));
 	lamps.lamps_out_cb<6>().set(FUNC(hng64_state::fight_lamps6_w)); // coin counters
@@ -3225,7 +3242,7 @@ GAME( 1997, hng64,    0,     hng64_default, hng64,          hng64_state, init_hn
 
 /* Games */
 GAME( 1997, roadedge, hng64, hng64_drive,   hng64_drive,    hng64_state, init_roadedge,    ROT0, "SNK",       "Roads Edge / Round Trip RV (rev.B)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_NODEVICE_LAN )  /* 001 */
-GAME( 1998, sams64,   hng64, hng64_fight,   hng64_fight,    hng64_state, init_ss64,        ROT0, "SNK",       "Samurai Shodown 64 / Samurai Spirits / Paewang Jeonseol 64", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND ) /* 002 */
+GAME( 1997, sams64,   hng64, hng64_fight,   hng64_fight,    hng64_state, init_ss64,        ROT0, "SNK",       "Samurai Shodown 64 / Samurai Spirits / Paewang Jeonseol 64", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND ) /* 002 */
 GAME( 1998, xrally,   hng64, hng64_drive,   hng64_drive,    hng64_state, init_hng64_drive, ROT0, "SNK",       "Xtreme Rally / Off Beat Racer!", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_NODEVICE_LAN )  /* 003 */
 GAME( 1998, bbust2,   hng64, hng64_shoot,   hng64_shoot,    hng64_state, init_hng64_shoot, ROT0, "SNK / ADK", "Beast Busters: Second Nightmare", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )  /* 004 */ // ADK credited in the ending sequence
 GAME( 1998, sams64_2, hng64, hng64_fight,   hng64_fight,    hng64_state, init_ss64,        ROT0, "SNK",       "Samurai Shodown 64: Warriors Rage / Samurai Spirits 2: Asura Zanmaden", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND ) /* 005 */

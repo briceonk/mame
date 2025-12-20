@@ -128,7 +128,7 @@ public:
 
 	template <unsigned N> auto lamps_out_cb() { return m_lamps_out_cb[N].bind(); }
 
-	void lamps_w(offs_t offset, u8 data) { m_lamps_out_cb[offset](data); }
+	void lamps_w(offs_t offset, u8 data);
 
 protected:
 	virtual void device_start() override ATTR_COLD;
@@ -181,7 +181,9 @@ public:
 		m_in(*this, "IN%u", 0U),
 		m_samsho64_3d_hack(0),
 		m_roadedge_3d_hack(0),
-		m_vertsrom(*this, "verts")
+		m_vertsrom(*this, "verts"),
+		m_wheel_motor(*this, "wheel_motor"),
+		m_lamps_out(*this, "lamp%u", 0U)
 	{
 	}
 
@@ -211,7 +213,7 @@ protected:
 	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 	virtual void video_start() override ATTR_COLD;
-
+	
 private:
 	static constexpr int HNG64_MASTER_CLOCK = 50'000'000;
 
@@ -346,6 +348,9 @@ private:
 
 	required_region_ptr<u16> m_vertsrom;
 	std::vector<polygon> m_polys;  // HNG64_MAX_POLYGONS
+
+	output_finder<> m_wheel_motor;
+	output_finder<8> m_lamps_out;
 
 	u16 main_latch[2]{};
 	u16 sound_latch[2]{};
@@ -523,12 +528,6 @@ private:
 	void tcu_tm1_cb(int state);
 	void tcu_tm2_cb(int state);
 
-	u16 sound_port_0008_r(offs_t offset, u16 mem_mask = ~0);
-	void sound_port_0008_w(offs_t offset, u16 data, u16 mem_mask = ~0);
-
-	void sound_port_000a_w(offs_t offset, u16 data, u16 mem_mask = ~0);
-	void sound_port_000c_w(offs_t offset, u16 data, u16 mem_mask = ~0);
-
 	void sound_port_0080_w(u16 data);
 
 	void sound_bank_w(offs_t offset, u16 data);
@@ -537,13 +536,16 @@ private:
 	u16 sound_comms_r(offs_t offset);
 	void sound_comms_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 
+	void hng64_audio_base(machine_config &config) ATTR_COLD;
 	void hng64_audio(machine_config &config) ATTR_COLD;
+	void hng64_audio_bbust2(machine_config &config) ATTR_COLD;
 	void hng64_network(machine_config &config) ATTR_COLD;
 	void comm_io_map(address_map &map) ATTR_COLD;
 	void comm_map(address_map &map) ATTR_COLD;
 	void main_map(address_map &map) ATTR_COLD;
 	void sound_io_map(address_map &map) ATTR_COLD;
 	void sound_map(address_map &map) ATTR_COLD;
+	void dsp_map(address_map &map) ATTR_COLD;
 };
 
 #endif // MAME_SNK_HNG64_H
