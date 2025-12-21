@@ -303,7 +303,7 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 	cpu_map(map);
 	map(0xe0cc0000, 0xe0cc0007).m(m_scsi, FUNC(ncr5380_device::map));
 
-		// Below this line is original
+	// Below this line is original
 	map(0xe0000000, 0xe000ffff).rom().region("eprom", 0);
 
 	// 0xe0c40000 // centronics
@@ -370,6 +370,7 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 {
 	cpu_map(map);
+	map.unmap_value_low();
 
 	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
 
@@ -379,11 +380,19 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
 	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
 	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
-	map(0xe1680000, 0xe1680000).lr8([this] { return u8(m_sw1->read()); }, "sw1_r");
+	map(0xe1680000, 0xe1680003).lr8([this] 
+		{
+			LOG("Read front panel sw: 0x%x (0x%x)\n", m_sw1->read(), ~u8(m_sw1->read()));
+			return ~0x2; 
+		}, "sw1_r"); // The 0-3 is important here - the monitor ROM and NEWS-OS use different bytes to read the switch values.
 	map(0xe1780000, 0xe1780003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
 
 	// // above this line is 100% legit
-	map(0xe1040000, 0xe1040000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), m_ram->pointer()); }, "ram_enable"); // guess
+	map(0xe1040000, 0xe1040000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer()); }, "ram_enable"); // guess
+	map(0xe1040001, 0xe1040001).lw8([this](u8 data) { LOG("wut1\n"); }, "wut1"); // TODO: get rid of these
+	map(0xe1040002, 0xe1040002).lw8([this](u8 data) { LOG("wut2\n"); }, "wut2"); // guess
+	map(0xe1040003, 0xe1040003).lw8([this](u8 data) { LOG("wut3\n"); }, "wut3"); // guess
+	
 	map(0xe1080000, 0xe1080000); // TODO: random theory to investigate later: is this the memory controller? If I add more than 8MB of memory, does the written value the second time change?
 
 	map(0xe1200000, 0xe1200000).lr8([this] { return m_intst; }, "intst_r"); // TODO: make sure this is accurate by commenting it out and trying to use something it has status for
@@ -405,16 +414,29 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe11c0000, 0xe11c000f); // TODO: abortctl?
 
 	// above this line is 50% legit
-
 	// below this line is wrong or unverified
 
 	// e1500001 = LED control?
+	map(0xe1140000, 0xe1140003).lrw8([](offs_t offset) { 
+		fatalerror("timer r\n"); // TODO: get rid of read handler
+		return 0; }, "timer_r",
+	[this](offs_t offset, u8 data) { 
+		LOG("timer_w offset = 0x%x data = 0x%x\n", offset, data);
+		if (offset == 0 && data) {
+			timer_w(1);
+		} else if (offset == 1 && data) {
+			timer_w(0);
+		} else {
+			// TODO: what is at these offsets?
+		}
+	}, "timer_w");
+
 	map(0xe1500000, 0xe1500000).lw8([this] (u32 data) { LOG("(%s) Write unknown 1 = 0x%x\n", machine().describe_context(), data); }, "unknown_1_w");
 	map(0xe1500001, 0xe1500001).lw8([this] (u32 data) { LOG("(%s) Write unknown 2 = 0x%x\n", machine().describe_context(), data); }, "unknown_2_w");
 	map(0xe1500002, 0xe1500002).lw8([this] (u32 data) { m_lcd_enable = bool(data); LOG("(%s) %s LCD\n", machine().describe_context(), m_lcd_enable ? "Enabled" : "Disabled"); }, "lcd_enable_w");
 	// WRONG: map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
-	map(0xe1480000, 0xe148001b).lr8([this] (offs_t offset) { LOG("%s crtc read offset %x\n", machine().describe_context(), offset); return 0xff; }, "lfbm_crtc_r");
-	map(0xe1480000, 0xe148001b).lw8([this] (offs_t offset, u8 data) { LOG("crtc offset %x 0x%02x\n", offset, data); }, "lfbm_crtc_w");
+	map(0xe1480000, 0xe148001f).lr8([this] (offs_t offset) { LOG("%s crtc read offset %x\n", machine().describe_context(), offset); return 0xff; }, "lfbm_crtc_r"); // range should end at 1b?
+	map(0xe1480000, 0xe148001f).lw8([this] (offs_t offset, u8 data) { LOG("crtc offset %x 0x%02x\n", offset, data); }, "lfbm_crtc_w"); // range should end at 1b?
 
 	// 0xe0c40000 // centronics
 
@@ -422,7 +444,6 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	//
 	// //map(0xe0f40000, 0xe0f40000).lr8([]() { return 0xfb; }, "scc_ridsr_r");
 	//
-	// map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::timer_w));
 	// map(0xe1080000, 0xe1080000).lw8([this](u8 data) { LOG("parity check enable 0x%02x\n", data); }, "parity_check_enable_w");
 	// map(0xe1180000, 0xe1180000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ2, bool(data)); }, "irq2_w");
 	// map(0xe1200000, 0xe1200000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer()); }, "ram_enable");
@@ -490,6 +511,7 @@ void news_68k_base_state::timer_w(u8 data)
 
 void news_68k_base_state::timer(s32 param)
 {
+	LOG("Setting IRQ6!\n");
 	m_cpu->set_input_line(INPUT_LINE_IRQ6, ASSERT_LINE);
 }
 
@@ -551,7 +573,7 @@ void news_68k_base_state::common(machine_config &config)
 	INPUT_MERGER_ANY_HIGH(config, m_irq5);
 	m_irq5->output_handler().set_inputline(m_cpu, INPUT_LINE_IRQ5);
 
-	AM7990(config, m_net);
+	AM7990(config, m_net, 20_MHz_XTAL); // TODO: need actual xtal frequency for each flavor
 	m_net->intr_out().set(FUNC(news_68k_base_state::irq_w<LANCE>)).invert();
 	m_net->dma_in().set([this](offs_t offset) { return m_net_ram[(offset >> 1) & 0x1fff]; });
 	m_net->dma_out().set([this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[(offset >> 1) & 0x1fff]); });
@@ -567,8 +589,8 @@ void news_68k_base_state::common(machine_config &config)
 	 * Vendor   Product          Rev. Vendor-specific
 	 * CDC      94221-5          5457 00018715
 	 */
-	NSCSI_CONNECTOR(config, "scsi:0", news_scsi_devices, "harddisk");
-	NSCSI_CONNECTOR(config, "scsi:1", news_scsi_devices, nullptr);
+	NSCSI_CONNECTOR(config, "scsi:0", news_scsi_devices, nullptr);
+	NSCSI_CONNECTOR(config, "scsi:1", news_scsi_devices, "harddisk");
 	NSCSI_CONNECTOR(config, "scsi:2", news_scsi_devices, nullptr);
 	NSCSI_CONNECTOR(config, "scsi:3", news_scsi_devices, nullptr);
 	NSCSI_CONNECTOR(config, "scsi:4", news_scsi_devices, nullptr);
@@ -671,12 +693,14 @@ void news_68k_laptop_state::nws1250(machine_config &config)
 	m_cpu->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_68k_laptop_state::cpu_autovector_map);
 
 	RAM(config, m_ram);
-	m_ram->set_default_size("8M");
-	m_ram->set_extra_options("4M,12M");
+	m_ram->set_default_size("12M"); // TODO: probably should be 8
+	m_ram->set_extra_options("4M,8M");
 	m_ram->set_default_value(0);
 
 	common(config);
 	config_scc(config, nullptr);
+	m_hid->irq_out<news_hid_hle_device::KEYBOARD>().set(m_irq5, FUNC(input_merger_device::in_w<0>));
+	m_hid->irq_out<news_hid_hle_device::MOUSE>().set(m_irq5, FUNC(input_merger_device::in_w<1>));
 
 	INPUT_MERGER_ANY_HIGH(config, m_irq7);
 	m_irq7->output_handler().set_inputline(m_cpu, INPUT_LINE_IRQ7);

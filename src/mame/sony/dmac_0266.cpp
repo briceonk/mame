@@ -20,7 +20,7 @@
 
 #define LOG_DATA    (1U << 1)
 
-//#define VERBOSE (LOG_GENERAL)
+#define VERBOSE (LOG_GENERAL)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(DMAC_0266, dmac_0266_device, "dmac_0266", "Sony 0266 DMA Controller")
@@ -40,7 +40,9 @@ void dmac_0266_device::map(address_map &map)
 	map(0x08, 0x0b).rw(FUNC(dmac_0266_device::tcount_r), FUNC(dmac_0266_device::tcount_w));
 	map(0x0c, 0x0f).w(FUNC(dmac_0266_device::tag_w));
 	map(0x10, 0x13).w(FUNC(dmac_0266_device::offset_w));
+	map(0x10, 0x13).r(FUNC(dmac_0266_device::offset_r));
 	map(0x14, 0x17).w(FUNC(dmac_0266_device::entry_w));
+	map(0x14, 0x17).r(FUNC(dmac_0266_device::entry_r));
 }
 
 void dmac_0266_device::device_start()

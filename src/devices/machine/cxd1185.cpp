@@ -24,6 +24,7 @@
 #define LOG_SCSI    (1U << 6)
 #define LOG_DMA     (1U << 7)
 
+#define VERBOSE (LOG_CONFIG)
 //#define VERBOSE (LOG_GENERAL|LOG_CMD|LOG_REG|LOG_STATE|LOG_CONFIG|LOG_INT|LOG_SCSI|LOG_DMA)
 
 #include "logmacro.h"
@@ -410,18 +411,20 @@ void cxd1185_device::environ_w(u8 data)
 
 void cxd1185_device::timer_w(u8 data)
 {
-	LOGMASKED(LOG_REG, "timer_w 0x%02x\n", data);
+	LOGMASKED(LOG_CONFIG, "timer_w 0x%02x\n", data);
 
-	unsigned const divisor = (m_environ & FS) ? ((m_environ & FS1) ? 2 : 3) : 4;
+	//unsigned const divisor = (m_environ & FS) ? ((m_environ & FS1) ? 2 : 3) : 4;
 	if (m_mode & TMSL)
 	{
-		m_rst_time = double(divisor * (32 * data + 38)) / clock() * 1E+9;
+		// m_rst_time = divisor * (32 * double(data) + 38) / clock() * 1E+9;
+		m_rst_time = 1000; // made this up
 
 		LOGMASKED(LOG_CONFIG, "reset timer %d ns\n", m_rst_time);
 	}
 	else
 	{
-		m_sel_time = double(divisor * (data + 1) * 8192) / clock() * 1E+9;
+		// m_sel_time = divisor * (double(data) + 1) * 8192 / clock() * 1E+9;
+		m_sel_time = 1000; // made this up
 
 		LOGMASKED(LOG_CONFIG, "selection timer %d ns\n", m_sel_time);
 	}
