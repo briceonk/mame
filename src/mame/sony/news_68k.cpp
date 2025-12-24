@@ -246,6 +246,8 @@ public:
 protected:
 	void laptop_cpu_map(address_map &map);
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect);
+	void itimer_w(u8 data);
+	void itimer(s32 param);
 
 	required_device<cxd1185_device> m_scsi;
 	required_device<screen_device> m_lcd;
@@ -261,7 +263,7 @@ void news_68k_base_state::machine_start()
 
 	m_net_ram = std::make_unique<u16[]>(8192);
 
-	m_timer = timer_alloc(FUNC(news_68k_base_state::timer), this);
+	// TODO: desktop m_timer = timer_alloc(FUNC(news_68k_base_state::timer), this);
 
 	m_intst = 0;
 	for (bool &int_state : m_int_state)
@@ -274,7 +276,7 @@ void news_68k_base_state::machine_start()
 void news_68k_laptop_state::machine_start()
 {
 	news_68k_base_state::machine_start();
-
+	m_timer = timer_alloc(FUNC(news_68k_laptop_state::itimer), this);
 	save_item(NAME(m_lcd_enable));
 	save_item(NAME(m_lcd_dim));
 	m_lcd_enable = false;
@@ -375,16 +377,16 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
 
 	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::poweron_w));
+	map(0xe10c0000, 0xe10c0000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ2, bool(data)); }, "irq2_w");
 
 	map(0xe1240000, 0xe1240007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_keyboard));
 	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
 	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
 	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
-	map(0xe1680000, 0xe1680003).lr8([this] 
-		{
-			LOG("Read front panel sw: 0x%x (0x%x)\n", m_sw1->read(), ~u8(m_sw1->read()));
-			return ~0x2; 
-		}, "sw1_r"); // The 0-3 is important here - the monitor ROM and NEWS-OS use different bytes to read the switch values.
+
+	// The 0-3 is important here - the monitor ROM and NEWS-OS use different bytes to read the switch values.
+	map(0xe1680000, 0xe1680003).lr8([this] { return m_sw1->read(); }, "sw1_r");
+
 	map(0xe1780000, 0xe1780003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
 
 	// // above this line is 100% legit
@@ -417,17 +419,20 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	// below this line is wrong or unverified
 
 	// e1500001 = LED control?
-	map(0xe1140000, 0xe1140003).lrw8([](offs_t offset) { 
+	map(0xe1100000, 0xe1100000).lw8([this](u8 data) {
+		m_cpu->set_input_line(INPUT_LINE_IRQ1, bool(data));
+	}, "ast_w");
+	map(0xe1140000, 0xe1140003).lrw8([](offs_t) {
 		fatalerror("timer r\n"); // TODO: get rid of read handler
 		return 0; }, "timer_r",
 	[this](offs_t offset, u8 data) { 
 		LOG("timer_w offset = 0x%x data = 0x%x\n", offset, data);
 		if (offset == 0 && data) {
-			timer_w(1);
+			itimer_w(1);
 		} else if (offset == 1 && data) {
-			timer_w(0);
+			m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
 		} else {
-			// TODO: what is at these offsets?
+			// TODO: figure out how the last two bytes map to the clock frequency
 		}
 	}, "timer_w");
 
@@ -445,16 +450,12 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	// //map(0xe0f40000, 0xe0f40000).lr8([]() { return 0xfb; }, "scc_ridsr_r");
 	//
 	// map(0xe1080000, 0xe1080000).lw8([this](u8 data) { LOG("parity check enable 0x%02x\n", data); }, "parity_check_enable_w");
-	// map(0xe1180000, 0xe1180000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ2, bool(data)); }, "irq2_w");
-	// map(0xe1200000, 0xe1200000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer()); }, "ram_enable");
-	// map(0xe1280000, 0xe1280000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ1, bool(data)); }, "ast_w");
+
 	// map(0xe1300000, 0xe1300000).lw8([this](u8 data) { LOG("cache enable 0x%02x (%s)\n", data, machine().describe_context()); }, "cache_enable_w");
-	// // 0xe1380000 // power on/off
 	// map(0xe1900000, 0xe1900000).lw8([this](u8 data) { LOG("cache clear 0x%02x\n", data); }, "cache_clear_w");
 	// map(0xe1a00000, 0xe1a00000).lw8([this](u8 data) { LOG("parity interrupt clear 0x%02x\n", data); }, "parity_interrupt_clear_w");
-	// // 0xe1b00000 // fdc vfo external/internal
-	//
-	// // external I/O
+
+	// external I/O
 	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_laptop_state::bus_error_r));
 }
 
@@ -471,7 +472,7 @@ void news_68k_base_state::cpu_autovector_map(address_map &map)
 
 template <news_68k_base_state::irq_number Number> void news_68k_base_state::irq_w(int state)
 {
-	LOG("irq number %d state %d\n", Number, state);
+	// LOG("irq number %d state %d\n", Number, state);
 
 	if (state)
 		m_intst |= 1U << Number;
@@ -511,7 +512,6 @@ void news_68k_base_state::timer_w(u8 data)
 
 void news_68k_base_state::timer(s32 param)
 {
-	LOG("Setting IRQ6!\n");
 	m_cpu->set_input_line(INPUT_LINE_IRQ6, ASSERT_LINE);
 }
 
@@ -600,6 +600,22 @@ void news_68k_base_state::common(machine_config &config)
 	NEWS_HID_HLE(config, m_hid);
 
 	SOFTWARE_LIST(config, "software_list").set_original("sony_news").set_filter("CISC");
+}
+
+void news_68k_laptop_state::itimer_w(u8 data)
+{
+	LOG("itimer_w 0x%02x (%s)\n", data, machine().describe_context());
+
+	// TODO: assume 1 starts and 0 stops the timer, fix formatting
+	if (data)
+		m_timer->adjust(attotime::zero, 0, attotime::from_hz(100));
+	else
+		m_timer->adjust(attotime::never);
+}
+
+void news_68k_laptop_state::itimer(s32 param)
+{
+	m_cpu->set_input_line(INPUT_LINE_IRQ6, ASSERT_LINE);
 }
 
 void news_68k_base_state::config_scc(machine_config &config, const char *default_device_name)
@@ -693,8 +709,8 @@ void news_68k_laptop_state::nws1250(machine_config &config)
 	m_cpu->set_addrmap(m68000_base_device::AS_CPU_SPACE, &news_68k_laptop_state::cpu_autovector_map);
 
 	RAM(config, m_ram);
-	m_ram->set_default_size("12M"); // TODO: probably should be 8
-	m_ram->set_extra_options("4M,8M");
+	m_ram->set_default_size("8M");
+	m_ram->set_extra_options("4M,12M");
 	m_ram->set_default_value(0);
 
 	common(config);
@@ -757,7 +773,7 @@ static INPUT_PORTS_START(nws12x0)
 	PORT_START("SW1")
 	PORT_DIPNAME(0x07, 0x02, "Display") PORT_DIPLOCATION("SW1:1,2,3")
 	PORT_DIPSETTING(0x07, "Console")
-	PORT_DIPSETTING(0x02, "LCD")
+	PORT_DIPSETTING(0x05, "LCD")
 	PORT_DIPSETTING(0x00, "Autoselect")
 
 	PORT_DIPNAME(0x08, 0x08, "Boot Device") PORT_DIPLOCATION("SW1:4")
@@ -772,7 +788,11 @@ static INPUT_PORTS_START(nws12x0)
 	PORT_DIPSETTING(0x20, DEF_STR(Off))
 	PORT_DIPSETTING(0x00, DEF_STR(On))
 
-	PORT_DIPUNUSED_DIPLOC(0xc0, 0xc0, "SW1:7,8")
+	PORT_DIPNAME(0x40, 0x40, "No Memory Mode") PORT_DIPLOCATION("SW1:7")
+	PORT_DIPSETTING(0x40, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+
+	PORT_DIPUNUSED_DIPLOC(0x80, 0x80, "SW1:8")
 INPUT_PORTS_END
 
 ROM_START(nws1250)
