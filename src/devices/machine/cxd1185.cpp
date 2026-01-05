@@ -25,7 +25,7 @@
 #define LOG_DMA     (1U << 7)
 
 //#define VERBOSE (LOG_GENERAL|LOG_CMD|LOG_REG|LOG_STATE|LOG_CONFIG|LOG_INT|LOG_SCSI|LOG_DMA)
-
+// #define VERBOSE (LOG_GENERAL|LOG_CMD|LOG_STATE)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(CXD1185, cxd1185_device, "cxd1185", "Sony CXD1185 SCSI 1 Protocol Controller")
@@ -904,13 +904,16 @@ void cxd1185_device::dma_w(u8 data)
 
 	m_fifo.enqueue(data);
 
-	if (m_fifo.full() || m_fifo.queue_length() >= m_count)
-	{
+	// TODO: Disabled this because NEWS-OS 4 sometimes sets count to some huge value and uses the DMAC and the SCSI command to control the bytes transferred.
+	// if (m_fifo.full() || m_fifo.queue_length() >= m_count)
+	// {
 		set_drq(false);
 
-		if (m_count)
-			m_state_timer->adjust(attotime::zero);
-	}
+		// if (m_count)
+		// {
+		m_state_timer->adjust(attotime::zero);
+		// }
+	// }
 }
 
 void cxd1185_device::port_w(u8 data)

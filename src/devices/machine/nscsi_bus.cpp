@@ -14,7 +14,7 @@
 #define LOG_DATA        (1U << 4)
 #define LOG_DATA_SENT   (1U << 5)
 
-#define VERBOSE (LOG_UNSUPPORTED)
+// #define VERBOSE (LOG_GENERAL|LOG_UNSUPPORTED|LOG_STATE)
 //#define LOG_OUTPUT_FUNC osd_printf_info
 
 
@@ -495,19 +495,23 @@ void nscsi_full_device::step(bool timeout)
 
 void nscsi_full_device::target_recv_byte()
 {
+	LOG("target_recv_byte start\n");
 	scsi_bus->ctrl_wait(scsi_refid, S_ACK, S_ACK);
 	scsi_state = (scsi_state & STATE_MASK) | (RECV_BYTE_T_WAIT_ACK_1 << SUB_SHIFT);
 	scsi_bus->ctrl_w(scsi_refid, S_REQ, S_REQ);
 	step(false);
+	LOG("target_recv_byte end\n");
 }
 
 void nscsi_full_device::target_send_byte(uint8_t val)
 {
+	LOG("target_send_byte start\n");
 	scsi_bus->ctrl_wait(scsi_refid, S_ACK, S_ACK);
 	scsi_state = (scsi_state & STATE_MASK) | (SEND_BYTE_T_WAIT_ACK_1 << SUB_SHIFT);
 	scsi_bus->data_w(scsi_refid, val);
 	scsi_bus->ctrl_w(scsi_refid, S_REQ, S_REQ);
 	step(false);
+	LOG("target_send_byte end\n");
 }
 
 uint8_t nscsi_full_device::scsi_get_data(int id, int pos)

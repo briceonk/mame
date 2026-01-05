@@ -20,7 +20,7 @@
 
 #define LOG_DATA    (1U << 1)
 
-#define VERBOSE (LOG_GENERAL)
+// #define VERBOSE (LOG_GENERAL)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(DMAC_0266, dmac_0266_device, "dmac_0266", "Sony 0266 DMA Controller")
@@ -83,6 +83,7 @@ void dmac_0266_device::soft_reset()
 
 void dmac_0266_device::eop_w(int state)
 {
+	LOG("eop_w 0x%x\n", state);
 	if (state)
 		m_status |= INTERRUPT;
 	else
@@ -91,6 +92,7 @@ void dmac_0266_device::eop_w(int state)
 
 void dmac_0266_device::req_w(int state)
 {
+	LOG("req_w 0x%x\n", state);
 	m_req_state = bool(state);
 
 	if (m_req_state)
@@ -145,10 +147,19 @@ void dmac_0266_device::dma_check(s32 param)
 		 */
 		if (!(m_status & INTERRUPT))
 		{
-			if (m_control & DIRECTION)
-				m_dma_r();
-			else
+			LOG("Padding byte\n");
+			if (m_control & DIRECTION) {
+				const u8 pad = m_dma_r();
+				LOG("Discarding pad byte 0x%x\n", pad);
+			}
+			else {
+				LOG("Padding write\n");
 				m_dma_w(0);
+			}
+		}
+		else
+		{
+			LOG("Skipping pad byte because interrupt was set\n");
 		}
 
 		return;
@@ -192,11 +203,18 @@ void dmac_0266_device::dma_check(s32 param)
 	// set terminal count flag
 	if (!m_tcount)
 	{
-		LOG("transfer complete\n");
+		LOG("transfer complete, setting TCZERO\n");
 		// HACK: per hack above, don't disable when reaching terminal count
 		//m_control &= ~ENABLE;
 		m_status |= TCZERO;
 	}
-	else
+
+	if (!(m_status & INTERRUPT)) {
+		// EOP not set, which means we need to keep going
 		m_dma_check->adjust(attotime::zero);
+	} 
+	// else {
+	// 	// EOP set, disable now.
+	// 	m_control &= ~ENABLE;
+	// }
 }

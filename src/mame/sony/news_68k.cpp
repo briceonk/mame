@@ -248,10 +248,12 @@ protected:
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect);
 	void itimer_w(u8 data);
 	void itimer(s32 param);
+	void ast_poll(s32 param);
 
 	required_device<cxd1185_device> m_scsi;
 	required_device<screen_device> m_lcd;
 	required_shared_ptr<u32> m_vram;
+	emu_timer *m_ast_poller;
 
 	bool m_lcd_enable = false;
 	bool m_lcd_dim = false;
@@ -277,6 +279,7 @@ void news_68k_laptop_state::machine_start()
 {
 	news_68k_base_state::machine_start();
 	m_timer = timer_alloc(FUNC(news_68k_laptop_state::itimer), this);
+	m_ast_poller = timer_alloc(FUNC(news_68k_laptop_state::ast_poll), this);
 	save_item(NAME(m_lcd_enable));
 	save_item(NAME(m_lcd_dim));
 	m_lcd_enable = false;
@@ -397,7 +400,7 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	
 	map(0xe1080000, 0xe1080000); // TODO: random theory to investigate later: is this the memory controller? If I add more than 8MB of memory, does the written value the second time change?
 
-	map(0xe1200000, 0xe1200000).lr8([this] { return m_intst; }, "intst_r"); // TODO: make sure this is accurate by commenting it out and trying to use something it has status for
+	map(0xe1200000, 0xe1200000).lr8([this] { return m_intst; }, "intst_r");
 
 	map(0xe2000000, 0xe20fffff).rom().region("krom", 0);
 	map(0xe4000000, 0xe401ffff).ram().share("vram");
@@ -418,26 +421,34 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	// above this line is 50% legit
 	// below this line is wrong or unverified
 
-	// e1500001 = LED control?
 	map(0xe1100000, 0xe1100000).lw8([this](u8 data) {
-		m_cpu->set_input_line(INPUT_LINE_IRQ1, bool(data));
+		// m_cpu->set_input_line(INPUT_LINE_IRQ1, bool(data));
+		if (data)
+		{
+			// TODO: this is an ugly hack, does it even work?
+			// LOG("Enabling AST polling\n");
+			m_ast_poller->adjust(attotime::from_hz(25.0), 0,attotime::from_hz(25.0));
+		}
+		else
+		{
+			m_cpu->set_input_line(INPUT_LINE_IRQ1, CLEAR_LINE);
+		}
 	}, "ast_w");
-	map(0xe1140000, 0xe1140003).lrw8([](offs_t) {
-		fatalerror("timer r\n"); // TODO: get rid of read handler
-		return 0; }, "timer_r",
-	[this](offs_t offset, u8 data) { 
-		LOG("timer_w offset = 0x%x data = 0x%x\n", offset, data);
-		if (offset == 0 && data) {
-			itimer_w(1);
+	map(0xe1140000, 0xe1140003).lw8(
+	[this](offs_t offset, u8 data) {
+		if (offset == 0) {
+			itimer_w(data);
 		} else if (offset == 1 && data) {
 			m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
 		} else {
 			// TODO: figure out how the last two bytes map to the clock frequency
+			// Can calc assuming 100Hz, and can verify by checking that SCSI init takes 10sec (or whatever the kernel is waiting for)
+			LOG("timer_w offset = 0x%x data = 0x%x\n", offset, data);
 		}
 	}, "timer_w");
 
 	map(0xe1500000, 0xe1500000).lw8([this] (u32 data) { LOG("(%s) Write unknown 1 = 0x%x\n", machine().describe_context(), data); }, "unknown_1_w");
-	map(0xe1500001, 0xe1500001).lw8([this] (u32 data) { LOG("(%s) Write unknown 2 = 0x%x\n", machine().describe_context(), data); }, "unknown_2_w");
+	map(0xe1500001, 0xe1500001).lw8([] (u32) { /* TODO: LED control according to NetBSD */ }, "led_w");
 	map(0xe1500002, 0xe1500002).lw8([this] (u32 data) { m_lcd_enable = bool(data); LOG("(%s) %s LCD\n", machine().describe_context(), m_lcd_enable ? "Enabled" : "Disabled"); }, "lcd_enable_w");
 	// WRONG: map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
 	map(0xe1480000, 0xe148001f).lr8([this] (offs_t offset) { LOG("%s crtc read offset %x\n", machine().describe_context(), offset); return 0xff; }, "lfbm_crtc_r"); // range should end at 1b?
@@ -604,18 +615,32 @@ void news_68k_base_state::common(machine_config &config)
 
 void news_68k_laptop_state::itimer_w(u8 data)
 {
-	LOG("itimer_w 0x%02x (%s)\n", data, machine().describe_context());
-
-	// TODO: assume 1 starts and 0 stops the timer, fix formatting
+	LOG("timer %s\n", data ? "enabled" : "disabled"); // TODO: mask
 	if (data)
-		m_timer->adjust(attotime::zero, 0, attotime::from_hz(100));
+	{
+		m_timer->adjust(attotime::from_hz(100), 0, attotime::from_hz(100));
+	}
 	else
+	{
 		m_timer->adjust(attotime::never);
+		m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
+	}
 }
 
 void news_68k_laptop_state::itimer(s32 param)
 {
 	m_cpu->set_input_line(INPUT_LINE_IRQ6, ASSERT_LINE);
+}
+
+void news_68k_laptop_state::ast_poll(s32 param)
+{
+	// LOG("AST poll, FC = 0x%x vs usr mode opts 0x%x and 0x%x\n", m_cpu->get_fc(), M68K_FC_USER_DATA, M68K_FC_USER_PROGRAM);
+	if (m_cpu->get_fc() == M68K_FC_USER_DATA || m_cpu->get_fc() == M68K_FC_USER_PROGRAM)
+	{
+		// LOG("AST set! Disabling polling.\n");
+		m_cpu->set_input_line(INPUT_LINE_IRQ1, ASSERT_LINE);
+		m_ast_poller->adjust(attotime::never);
+	}
 }
 
 void news_68k_base_state::config_scc(machine_config &config, const char *default_device_name)
@@ -727,7 +752,8 @@ void news_68k_laptop_state::nws1250(machine_config &config)
 	FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
 
 	// scsi host adapter
-	NSCSI_CONNECTOR(config, "scsi:7").option_set("cxd1185", CXD1185).machine_config(
+	// TODO: real frequency for clock
+	NSCSI_CONNECTOR(config, "scsi:7").option_set("cxd1185", CXD1185).clock(16_MHz_XTAL).machine_config(
 		[this](device_t *device)
 		{
 			auto &adapter = downcast<cxd1185_device &>(*device);
