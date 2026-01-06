@@ -349,8 +349,15 @@ void update_descriptor(const u32 tptr, const int type, const u32 entry, const bo
 	}
 	else if (type != M68K_MMU_DF_DT_INVALID && !(entry & M68K_MMU_DF_USED))
 	{
+		MMULOG("entry before setting U: 0x%08x\n", m_program->read_dword(tptr));
 		MMULOG("%s: set U at %08x\n", __func__, tptr);
 		m_program->write_dword(tptr, entry | M68K_MMU_DF_USED);
+		MMULOG("%s: set U, %08x\n", __func__, m_program->read_dword(tptr));
+
+	}
+	else
+	{
+		MMULOG("%s: bad update, tptr = 0x%x type = 0x%x, rw = 0x%x, entry = 0x%x, current value = 0x%x\n", __func__, tptr, type, rw, entry, m_program->read_dword(tptr));
 	}
 }
 
@@ -602,7 +609,7 @@ u32 pmmu_translate_addr_with_fc(u32 addr_in, u8 fc, bool rw, const int limit = 7
 
 		if (!pload)
 		{
-			MMULOG("%s: set buserror (SR %04X)\n", __func__, m_mmu_tmp_sr);
+			MMULOG("%s: set buserror (SR %04X) ctx %s\n", __func__, m_mmu_tmp_sr, machine().describe_context());
 			pmmu_set_buserror(addr_in);
 		}
 	}
