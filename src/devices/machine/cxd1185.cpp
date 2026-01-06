@@ -25,7 +25,7 @@
 #define LOG_DMA     (1U << 7)
 
 //#define VERBOSE (LOG_GENERAL|LOG_CMD|LOG_REG|LOG_STATE|LOG_CONFIG|LOG_INT|LOG_SCSI|LOG_DMA)
-// #define VERBOSE (LOG_GENERAL|LOG_CMD|LOG_STATE)
+
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(CXD1185, cxd1185_device, "cxd1185", "Sony CXD1185 SCSI 1 Protocol Controller")

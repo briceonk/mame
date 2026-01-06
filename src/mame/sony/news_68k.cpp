@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:Patrick Mackinlay
+// copyright-holders:Patrick Mackinlay,Brice Onken
 
 /*
    Sony NEWS M68K systems.
@@ -213,6 +213,8 @@ public:
 	void nws1580(machine_config &config) ATTR_COLD;
 
 protected:
+	virtual void machine_start() override ATTR_COLD;
+
 	void desktop_cpu_map(address_map &map);
 
 #if DESKTOP_GRAPHICS
@@ -265,14 +267,18 @@ void news_68k_base_state::machine_start()
 
 	m_net_ram = std::make_unique<u16[]>(8192);
 
-	// TODO: desktop m_timer = timer_alloc(FUNC(news_68k_base_state::timer), this);
-
 	m_intst = 0;
 	for (bool &int_state : m_int_state)
 		int_state = false;
 
 	m_scc_irq_state = false;
 	m_parity_irq_state = false;
+}
+
+void news_68k_desktop_state::machine_start()
+{
+	news_68k_base_state::machine_start();
+	m_timer = timer_alloc(FUNC(news_68k_desktop_state::timer), this);
 }
 
 void news_68k_laptop_state::machine_start()
@@ -605,8 +611,8 @@ void news_68k_base_state::common(machine_config &config)
 	 * Vendor   Product          Rev. Vendor-specific
 	 * CDC      94221-5          5457 00018715
 	 */
-	NSCSI_CONNECTOR(config, "scsi:0", news_scsi_devices, nullptr);
-	NSCSI_CONNECTOR(config, "scsi:1", news_scsi_devices, "harddisk");
+	NSCSI_CONNECTOR(config, "scsi:0", news_scsi_devices, "harddisk");
+	NSCSI_CONNECTOR(config, "scsi:1", news_scsi_devices, nullptr);
 	NSCSI_CONNECTOR(config, "scsi:2", news_scsi_devices, nullptr);
 	NSCSI_CONNECTOR(config, "scsi:3", news_scsi_devices, nullptr);
 	NSCSI_CONNECTOR(config, "scsi:4", news_scsi_devices, nullptr);
