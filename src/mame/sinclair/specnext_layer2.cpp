@@ -117,8 +117,8 @@ void specnext_layer2_device::draw_256(screen_device &screen, bitmap_rgb32 &bitma
 			const rgb_t pen = palette().pen_color(idx);
 			const bool is_transparent = (pen == gt0) || (pen == gt1);
 			const bool is_prio_color = m_pen_priority[idx];
-			blend(*(prio), *(pix), pen, is_transparent, is_prio_color, pcode, priority_mask, mixer);
-			blend(*(prio + 1), *(pix + 1), pen, is_transparent, is_prio_color, pcode, priority_mask, mixer);
+			blend(prio[0], pix[0], pen, is_transparent, is_prio_color, pcode, priority_mask, mixer);
+			blend(prio[1], pix[1], pen, is_transparent, is_prio_color, pcode, priority_mask, mixer);
 
 			++x %= info[0];
 			if (x == 0 && !x_overscan)
@@ -165,7 +165,7 @@ void specnext_layer2_device::draw_16(screen_device &screen, bitmap_rgb32 &bitmap
 				const rgb_t pen = palette().pen_color(idx);
 				const bool is_transparent = (pen == gt0) || (pen == gt1);
 				const bool is_prio_color = m_pen_priority[idx];
-				blend(*(prio), *(pix), pen, is_transparent, is_prio_color, pcode, priority_mask, mixer);
+				blend(prio[0], pix[0], pen, is_transparent, is_prio_color, pcode, priority_mask, mixer);
 			}
 
 			{
@@ -173,7 +173,7 @@ void specnext_layer2_device::draw_16(screen_device &screen, bitmap_rgb32 &bitmap
 				const rgb_t pen = palette().pen_color(idx);
 				const bool is_transparent = (pen == gt0) || (pen == gt1);
 				const bool is_prio_color = m_pen_priority[idx];
-				blend(*(prio + 1), *(pix + 1), pen, is_transparent, is_prio_color, pcode, priority_mask, mixer);
+				blend(prio[1], pix[1], pen, is_transparent, is_prio_color, pcode, priority_mask, mixer);
 			}
 
 			++x %= info[0];
@@ -193,6 +193,8 @@ void specnext_layer2_device::device_add_mconfig(machine_config &config)
 
 void specnext_layer2_device::device_start()
 {
+	save_item(NAME(m_offset_h));
+	save_item(NAME(m_offset_v));
 	save_item(NAME(m_global_transparent));
 	save_item(NAME(m_layer2_palette_select));
 	save_pointer(NAME(m_pen_priority), 512 * 4);

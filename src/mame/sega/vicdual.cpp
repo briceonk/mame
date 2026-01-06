@@ -13,7 +13,7 @@
         * Space Attack / Head On
         * Head On
         * Head On 2
-		* Head On 2 (Slimline)
+        * Head On 2 (Slimline)
         * Invinco / Head On 2
         * N-Sub
         * Samurai
@@ -1673,7 +1673,6 @@ static INPUT_PORTS_START( headon2sl )
 
 	PORT_COIN_DEFAULT
 
-	
 	PORT_START("FAKE_LIVES.0")
 	PORT_DIPNAME( 0x03, 0x01, "Lives" )   PORT_DIPLOCATION("SW1:1,2")
 	PORT_DIPSETTING(    0x00, "4" )
@@ -4283,8 +4282,8 @@ ROM_START( headon2 )
 	ROM_LOAD( "316-0206.u65", 0x0000, 0x0020, CRC(9617d796) SHA1(7cff2741866095ff42eadd8022bea349ec8d2f39) )    // control PROM
 ROM_END
 
-/* Head On 2 - Sega Slimline (VIC Dual PCB Set)*/
-/* Head On Part 2 - Nintendo Table (Nintendo THO PCB Set) */
+// Head On 2 - Sega Slimline (VIC Dual PCB Set)
+// Head On Part 2 - Nintendo Table (Nintendo THO PCB Set)
 ROM_START( headon2sl )
 	ROM_REGION( 0x10000, "maincpu", 0 )
 	ROM_LOAD( "epr-170.u33",   0x0000, 0x0400, CRC(C108625D) SHA1(b6e255b819a001a0147f2ddf5f78689e0491da88) )
@@ -4674,7 +4673,7 @@ ROM_START( carnivalb )
 	ROM_LOAD( "316-0633.u49",  0x0000, 0x0020, CRC(f0084d80) SHA1(95ec912ac2c64cd58a50c68afc0993746841a531) )
 
 	ROM_REGION( 0x0400, "audiocpu", 0 ) // sound ROM
-	ROM_LOAD( "carnival_b.u5", 0x0000, 0x0400, CRC(422abb43) SHA1(edb6f74ccf9382624353e927ac225e1455bb1144) )
+	ROM_LOAD( "epr-647a.u5", 0x0000, 0x0400, CRC(422abb43) SHA1(edb6f74ccf9382624353e927ac225e1455bb1144) )
 
 	ROM_REGION( 0x0020, "user1", 0 )    // timing PROM
 	ROM_LOAD( "316-0206.u14",  0x0000, 0x0020, CRC(9617d796) SHA1(7cff2741866095ff42eadd8022bea349ec8d2f39) )    // control PROM
