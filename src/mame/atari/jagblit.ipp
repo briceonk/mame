@@ -343,10 +343,11 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 			uint32_t writedata = 0;
 			int inhibit = 0;
 
-				/* load src data and Z */
+				/* load src data and Z (SRCEN) */
 				if (COMMAND & 0x00000001)
 				{
 					srcdata = READ_PIXEL(asrc, asrcflags);
+					// (SRCENZ)
 					if (COMMAND & 0x00000002)
 						srczdata = READ_ZDATA(asrc, asrcflags);
 					else if (COMMAND & 0x001c020)
@@ -355,14 +356,16 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 				else
 				{
 					srcdata = READ_RDATA(B_SRCD_H, asrc, asrcflags, asrc_phrase_mode);
+					// (PATDSEL | TOPBEN | TOPNEN | DSTWRZ)
 					if (COMMAND & 0x001c020)
 						srczdata = READ_RDATA(B_SRCZ1_H, asrc, asrcflags, asrc_phrase_mode);
 				}
 
-				/* load dst data and Z */
+				/* load dst data and Z (DSTEN) */
 				if (COMMAND & 0x00000008)
 				{
 					dstdata = READ_PIXEL(adest, adestflags);
+					// (DSTENZ)
 					if (COMMAND & 0x00000010)
 						dstzdata = READ_ZDATA(adest, adestflags);
 					else
@@ -371,11 +374,12 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 				else
 				{
 					dstdata = READ_RDATA(B_DSTD_H, adest, adestflags, adest_phrase_mode);
+					// (DSTENZ)
 					if (COMMAND & 0x00000010)
 						dstzdata = READ_RDATA(B_DSTZ_H, adest, adestflags, adest_phrase_mode);
 				}
 
-				/* handle clipping */
+				/* handle clipping (CLIP_A1) */
 				if (COMMAND & 0x00000040)
 				{
 					if (adest_x < 0 || adest_y < 0 ||
@@ -392,9 +396,18 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 				if (COMMAND & 0x00100000)
 					if (srczdata > dstzdata) inhibit = 1;
 
-				/* apply data comparator */
+				// apply bit comparator (BCOMPEN)
+				// - missil3d, clubdriv, avsp score/automap
+				if (COMMAND & 0x04000000)
+				{
+					if (srcdata == 0)
+						inhibit = 1;
+				}
+
+				/* apply data comparator (DCOMPEN) */
 				if (COMMAND & 0x08000000)
 				{
+					// !(CMPDST)
 					if (!(COMMAND & 0x02000000))
 					{
 						if (srcdata == READ_RDATA(B_PATD_H, asrc, asrcflags, asrc_phrase_mode))
@@ -435,7 +448,7 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 							writedata |= srcdata & dstdata;
 					}
 
-					/* handle source shading */
+					/* handle source shading (SRCSHADE) */
 					if (COMMAND & 0x40000000)
 					{
 						int intensity = srcdata & 0x00ff;
@@ -447,7 +460,7 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 						writedata = (srcdata & 0xff00) | intensity;
 					}
 
-					/* handle gouraud shading */
+					/* handle gouraud shading (GOURD) */
 					if (COMMAND & 0x1000)
 					{
 						int p = asrc_phrase_mode ? (asrc_x & 3) : 3;
@@ -461,12 +474,18 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 					}
 				}
 				else
+				{
 					writedata = dstdata;
+					// TODO: verify me
+					//srczdata = dstzdata;
+				}
 
+			// (BKGWREN)
 			if ((command & 0x10000000) || !inhibit)
 			{
 				/* write to the destination */
 				WRITE_PIXEL(adestflags, writedata);
+				// (DSTWRZ)
 				if (COMMAND & 0x00000020)
 					WRITE_ZDATA(adestflags, srczdata);
 			}
