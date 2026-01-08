@@ -222,7 +222,8 @@ Uses [GPU] irq 3
 		<year>1996</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Title screen foreground layer not drawn properly ([object] pitch = 3 in scaled mode)
+Title screen foreground layer not drawn properly ([object] pitch = 3 in scaled mode) (fixed)
+Main menu text flickers, [object] timings?
 No sound (fixed)
 Access [cart] EEPROM
 Uses [GPU] irq 3
@@ -263,10 +264,13 @@ Title screen has black dots of garbage on top (btanb)
 		<publisher>ScatoLOGIC</publisher>
 		<notes><![CDATA[
 4 Play logo has [blitter] SRCSHADE bug on rolling section (red-ish, should be same-ish color as logo)
-Heavy GFX corruptions after 4 Play logo ([object] pitch = 3 16bpp)
+Heavy GFX corruptions after 4 Play logo ([object] pitch = 3 16bpp) (fixed)
+Has CRY color bugs on main menu (uses [blitter] !TOPBEN)
+Some chars have [blitter] pitch width issues (similar to cybermor)
 Black screen after selecting a mode, both 68k and [GPU] stalls on sharedram
 No sound (fixed, 68k JPIT irqs)
 Access [cart] EEPROM
+Access [paddle] interface
 ]]></notes>
 
 		<info name="serial" value="J9807E"/>
@@ -282,10 +286,7 @@ Access [cart] EEPROM
 		<year>2002</year>
 		<publisher>ScatoLOGIC</publisher>
 		<notes><![CDATA[
-Heavy GFX corruptions after 4 Play logo ([object] pitch = 3 16bpp)
-No sound (fixed, 68k JPIT irqs)
-Black screen after selecting a mode, both 68k and [GPU] stalls on sharedram
-Access [cart] EEPROM
+Same as battlesp
 ]]></notes>
 
 		<info name="serial" value="J0201G"/>
@@ -301,7 +302,7 @@ Access [cart] EEPROM
 		<year>1996</year>
 		<publisher>Telegames</publisher>
 		<notes><![CDATA[
-Has severe RMW issues in both versions of the game when breaking blocks
+Has severe RMW issues in both versions of the game when breaking blocks (fixed, [blitter] pitch)
 No sound (fixed, [DSP] irq priority)
 Access [cart] EEPROM
 ]]></notes>
@@ -391,9 +392,11 @@ Access [cart] EEPROM
 		<year>1994</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Has serious 3D GFX pitch issues ([object] pitch = 2 16bpp)
+Has serious 3D GFX pitch issues ([object] pitch = 2 16bpp) (fixed)
 No sound (fixed, serial clock)
-Crashes in [DSP] after few seconds of gameplay
+[blitter] needs GOURZ (noticeable with main default car)
+Missing map display during gameplay
+Randomly crashes in [DSP] during gameplay (particularly when crashing a bit too much)
 Access [cart] EEPROM
 ]]></notes>
 
@@ -433,7 +436,10 @@ Eventually black screens/crashes
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
 Access [cart] EEPROM
-Huge GFX issues ([object] pitch = 4 16bpp)
+Huge GFX issues ([object] pitch = 4 16bpp) (fixed)
+Corrupted text chars
+Offset HUD elements in gameplay
+Submerged 3d elements in playfield, wants [blitter] GOURZ?
 No sound (fixed, DSP JPIT irqs)
 ]]></notes>
 
@@ -450,9 +456,7 @@ No sound (fixed, DSP JPIT irqs)
 		<year>1993</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Access [cart] EEPROM
-Huge GFX issues ([object] pitch = 4 16bpp)
-No sound (fixed, DSP JPIT irqs)
+Same as cybermor
 ]]></notes>
 
 		<info name="serial" value="J9000E 700700-2"/>
@@ -578,9 +582,11 @@ TODO: check EEPROM access (by logic it should have one)
 		<year>1996</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Randomly hangs/crashes (PIT prescaler = 0xffff, fixed?)
-Heavy pitch GFX issues ([object] pitch = 3 16bpp)
+Heavy pitch GFX issues ([object] pitch = 3 16bpp) (fixed)
 No sound (fixed, serial clock)
+Flickering [object] sprites on main menu
+Runs too fast
+Randomly crashes during gameplay
 Access [cart] EEPROM
 ]]></notes>
 
@@ -652,9 +658,12 @@ Access [cart] EEPROM
 		<year>1995</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Bad background RMW colors on difficulty select screen (press A after title)
+Bad background RMW colors on difficulty select screen (press A after title) (fixed, [blitter] !TOPBEN)
 Huge GFX issues on gameplay ([object] pitch = 0 4bpp and pitch = 3 16bpp)
+Text is solid squares [blitter] BCOMPEN?
 No sound (fixed)
+No SFXs during gameplay
+Missing objects during gameplay, [blitter] GOURZ?
 ]]></notes>
 
 		<info name="serial" value="J9009E 700709-002"/>
@@ -686,10 +695,12 @@ Reload after saving doesn't work, access [cart] EEPROM (verify, should be fixed)
 		<year>1995</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Has heavy pitch GFX issues (unhandled [object] pitch = 4 16bpp)
-Uses a mix of [blitter] BCOMPEN and GOURD + GOURZ
+Has heavy pitch GFX issues (unhandled [object] pitch = 4 16bpp) (fixed)
+Uses a mix of [blitter] BCOMPEN and GOURD + GOURZ, zooming transitions are off
 Uses [GPU] irq 3
 Access [cart] EEPROM
+Incorrect gouraud fills during gameplay
+Has Z clipping issues during gameplay [blitter]
 ]]></notes>
 
 		<info name="serial" value="J9043E 705043-002"/>
@@ -706,7 +717,7 @@ Access [cart] EEPROM
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
 No sound (fixed, serial clock)
-Bad pitch GFXs on attract mode, after title ([object] pitch = 4 24bpp)
+Bad pitch GFXs on attract mode, after title ([object] pitch = 4 24bpp) (fixed)
 Black screen after briefing, or by selecting demo mode
 ]]></notes>
 
@@ -725,8 +736,8 @@ Black screen after briefing, or by selecting demo mode
 		<publisher>Telegames</publisher>
 		<notes><![CDATA[
 No sound (fixed, [DSP] irq priority)
-Stretched title screen pixel width
-Several pitch issues (title logo on main menu [object] pitch = 3 16bpp)
+Stretched title screen pixel width (fixed)
+Several pitch issues (title logo on main menu [object] pitch = 3 16bpp) (fixed)
 Hangs after selecting weapon, heavy sound serial reads in [DSP]
 Uses [GPU] irqs 0,2,3
 Access [cart] EEPROM
@@ -745,9 +756,9 @@ Access [cart] EEPROM
 		<year>1994</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Black screen, [GPU] reads bad pointer in irq 0 stack bp f030f0,1,{r30=0;g} ([blitter]?)
+Black screen, [GPU] reads bad pointer in irq 0 stack bp f030f0,1,{r30=0;g} (fixed)
 BGM doesn't work in some stages
-Cutoff gameplay area
+Cutoff gameplay area on bottom
 Reads back [object] processor data during gameplay
 Access [cart] EEPROM
 Uses [GPU] irqs 0,4
@@ -823,11 +834,12 @@ Uses [GPU] irqs 0 and 4
 		<publisher>Songbird Productions</publisher>
 		<notes><![CDATA[
 "Enter Combat" has ground textures with black, uses [blitter] GOURZ
-"Enter Network" causes a black screen after loading (JagLink)
+"Enter Network" causes a black screen after loading (JagLink), 68k trash DSP memory at PC=73CCC
 Reads error bit 15 in [Jerry] ASISTAT
 Sometimes hangs on main menu
-Main menu background is cutoff to the right, uses unemulated [object] scaled blend mode (pillar in the center)
-BGM randomly don't work on main menu
+Main menu background is cutoff to the right
+Unemulated [object] scaled blend mode (pillar in the center) (fixed)
+BGM randomly don't work on title and main menu
 Uses [GPU] irq 0
 ]]></notes>
 
@@ -899,7 +911,7 @@ Uses [GPU] irq 3
 		<year>1999</year>
 		<publisher>Songbird Productions</publisher>
 		<notes><![CDATA[
-[GPU] Black screen, does an unaligned write to border color regs
+[GPU] Black screen, does an unaligned write to border color regs (fixed)
 [GPU] Enables bus hog
 No sound (fixed, DSP JPIT irqs)
 ]]></notes>
@@ -917,7 +929,7 @@ No sound (fixed, DSP JPIT irqs)
 		<year>2002</year>
 		<publisher>Songbird Productions</publisher>
 		<notes><![CDATA[
-[GPU] Black screen, does an unaligned write to border color regs
+[GPU] Black screen, does an unaligned write to border color regs (fixed)
 [GPU] Enables bus hog
 No sound (fixed, DSP JPIT irqs)
 ]]></notes>
@@ -1088,7 +1100,9 @@ RSoD on Jaguar logo
 		<year>2001</year>
 		<publisher>B&amp;C Computervisions</publisher>
 		<notes><![CDATA[
-Gets to title screen (with [object] pitch = 2 16bpp) then 68k crashes ([blitter]? waitstates?)
+Gets to title screen (with [object] pitch = 2 16bpp) (fixed)
+Corrupted limits on rotating attract logo
+[object] or 68k crashes after a bit of attract ([blitter]? waitstates?)
 No sound (fixed, serial clock)
 Access [cart] EEPROM
 ]]></notes>
@@ -1105,9 +1119,7 @@ Access [cart] EEPROM
 		<year>19??</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Gets to title screen (with [object] pitch = 2 16bpp) then 68k crashes ([blitter]? waitstates?)
-No sound (fixed, serial clock)
-Access [cart] EEPROM
+Same as spacewar
 ]]></notes>
 
 		<part name="cart" interface="jaguar_cart">
@@ -1325,8 +1337,8 @@ GFXs missing on gameplay and title screen
 		<publisher>Williams Entertainment</publisher>
 		<notes><![CDATA[
 No sound (fixed, serial clock)
-Has minor GFX pitch issue when action summary message pops up after a play
-[DSP] randomly crashes on main menu
+Has minor GFX pitch issue when action summary message pops up after a play (fixed)
+[DSP] randomly crashes on main menu or in gameplay
 Overscan bug with sprites
 Access [cart] EEPROM
 ]]></notes>
@@ -1401,7 +1413,7 @@ Uses [GPU] irq 3
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
 Triggers [object] pitch = 2 8bpp at Trimark logo
-Heavy GFX glitches in gameplay
+Heavy GFX glitches in gameplay, [object] timings?
 No sound (fixed, [DSP] irq priority)
 ]]></notes>
 
@@ -1418,7 +1430,8 @@ No sound (fixed, [DSP] irq priority)
 		<year>1994</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Sound buzz when selecting new game, can eventually black screen or throw an exception
+Black screen with buzz, regression regarding [DSP] serial irqs triggers
+Playfield fills with black stripes, probably missing [object] pitch drawing
 Access [cart] EEPROM
 ]]></notes>
 
@@ -1469,7 +1482,7 @@ Access [cart] EEPROM
 		<year>1994</year>
 		<publisher>Atari</publisher>
 		<notes><![CDATA[
-Sound metrics menu has glitchy bars (pause menu then press 'B', [object] pitch = 0 16bpp)
+Sound metrics menu has glitchy bars (pause menu then press 'B', [object] pitch = 0 16bpp) (fixed)
 Main sprite flickers
 Access [cart] EEPROM
 Uses [GPU] irq 0
@@ -1844,9 +1857,9 @@ Not extensively tested
 		<publisher>&lt;homebrew&gt;</publisher>
 		<notes><![CDATA[
 Not extensively tested
-4 players game, requires [multitap] emulation
 ]]></notes>
 		<info name="developer" value="Reboot" />
+		<info name="usage" value="4 players game, p2 and p4 uses buttons A and C of p1 and p3" />
 		<part name="cart" interface="jaguar_cart">
 			<dataarea name="rom" size="0x200000" width="32" endianness="big">
 				<rom name="expressway.j64" size="0x200000" crc="499429b2" sha1="21b1f1cea213291e841c0b4cf6c88d8cf9a5488a" />

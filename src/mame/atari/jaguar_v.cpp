@@ -604,6 +604,8 @@ void jaguar_state::blitter_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 		blitter_run();
 	}
 
+	// TODO: B_STOP (for collision detection, assuming anything ever used this)
+
 	LOGMASKED(LOG_BLITTER_WRITE, "%s:Blitter write register @ F022%02X = %08X\n", machine().describe_context(), offset * 4, data);
 #else
 	m_blitter->iobus_w(offset, data, mem_mask);
@@ -677,8 +679,11 @@ void jaguar_state::tom_regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			// TODO: INT2 bus mechanism
 
 			case VMODE:
+				// TODO: verify if bit 0 also suspend the object timer until next frame
 				if (reg_store != m_gpu_regs[offset])
+				{
 					set_palette(m_gpu_regs[VMODE]);
+				}
 				break;
 
 			case OBF:   /* clear GPU interrupt */
