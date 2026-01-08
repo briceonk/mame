@@ -140,15 +140,13 @@ public:
 protected:
 	// driver_device overrides
 	virtual void machine_start() override ATTR_COLD;
-	virtual void machine_reset() override ATTR_COLD;
 
 	// address maps
-	void cpu_map(address_map &map) ATTR_COLD;
 	void cpu_autovector_map(address_map &map) ATTR_COLD;
 
 	// machine config
 	void common(machine_config &config);
-	void config_scc(machine_config &config, const char *default_device_name);
+	void config_scc(machine_config &config, const char *default_device_name, int scc_clock);
 
 	enum irq_number : unsigned
 	{
@@ -223,6 +221,7 @@ public:
 
 protected:
 	virtual void machine_start() override ATTR_COLD;
+	virtual void machine_reset() override ATTR_COLD;
 
 	void desktop_cpu_map(address_map &map);
 
@@ -253,6 +252,7 @@ public:
 
 	void nws1250(machine_config &config) ATTR_COLD;
 	virtual void machine_start() override ATTR_COLD;
+	virtual void machine_reset() override ATTR_COLD;
 
 protected:
 	void laptop_cpu_map(address_map &map);
@@ -301,7 +301,13 @@ void news_68k_laptop_state::machine_start()
 	m_lcd_dim = false;
 }
 
-void news_68k_base_state::machine_reset()
+void news_68k_desktop_state::machine_reset()
+{
+	// eprom is mapped at 0 after reset
+	m_cpu->space(0).install_rom(0x00000000, 0x0000ffff, m_eprom);
+}
+
+void news_68k_laptop_state::machine_reset()
 {
 	// eprom is mapped at 0 after reset
 	m_cpu->space(0).install_rom(0x00000000, 0x0001ffff, m_eprom);
@@ -313,22 +319,13 @@ void news_68k_base_state::init_common()
 	m_fdc->set_rate(500000);
 }
 
-void news_68k_base_state::cpu_map(address_map &map)
-{
-	// external I/O TODO: is this needed for laptop NEWS?
-	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_base_state::bus_error_r));
-}
-
 void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 {
-	cpu_map(map);
-
 	map(0xe0000000, 0xe000ffff).rom().region("eprom", 0);
 
 	// 0xe0c40000 // centronics
 	map(0xe0c80000, 0xe0c80003).m(m_fdc, FUNC(upd72067_device::map));
 	map(0xe0c80100, 0xe0c80100).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w));
-
 	map(0xe0cc0000, 0xe0cc0007).m(m_scsi, FUNC(ncr5380_device::map));
 
 	map(0xe0d00000, 0xe0d00007).m(m_hid, FUNC(news_hid_hle_device::map_68k));
@@ -361,6 +358,8 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 	// HACK: disable fdc irq for NetBSD
 	map(0xe1c00200, 0xe1c00200).lw8([this](u8 data) { irq_w<FDC>(0); m_parity_vector = data; }, "parity_vector_w");
 
+	// external I/O
+	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_desktop_state::bus_error_r));
 
 #if DESKTOP_GRAPHICS
 	// POPC
@@ -390,8 +389,6 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 
 void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 {
-	cpu_map(map);
-
 	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
 
 	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::poweron_w));
@@ -430,8 +427,8 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe1c00000, 0xe1c00017).m(m_dma, FUNC(dmac_0266_device::map));
 
 	map(0xe1a00000, 0xe1a03fff).lrw16(
-	[this](offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
-	[this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
+		[this](offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
+		[this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
 	map(0xe1a40000, 0xe1a40003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
 
 	map(0xe2000000, 0xe20fffff).rom().region("krom", 0);
@@ -444,6 +441,9 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	// WRONG: map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
 	map(0xe1480000, 0xe148001f).lr8([this] (offs_t offset) { LOG("%s crtc read offset %x\n", machine().describe_context(), offset); return 0xff; }, "lfbm_crtc_r"); // range should end at 1b?
 	map(0xe1480000, 0xe148001f).lw8([this] (offs_t offset, u8 data) { LOG("crtc offset %x 0x%02x\n", offset, data); }, "lfbm_crtc_w"); // range should end at 1b?
+
+	// external I/O TODO: is this needed for laptop NEWS?
+	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_laptop_state::bus_error_r));
 }
 
 void news_68k_base_state::cpu_autovector_map(address_map &map)
@@ -527,7 +527,7 @@ void news_68k_base_state::poweron_w(u8 data)
 
 void news_68k_base_state::ast_w(u8 data)
 {
-	// TODO: The NWS-800 and NWS-3800 only set AST when the system transitions to user mode - is the same true here?
+	// TODO: The NWS-800/3800 only trigger AST once the system transitions to user mode (FC) - is the same true here?
 	bool const ast = bool(data);
 	LOG("(%s) %s AST\n", machine().describe_context(), ast ? "Set" : "Cleared");
 	m_cpu->set_input_line(INPUT_LINE_IRQ1, ast);
@@ -646,9 +646,9 @@ void news_68k_laptop_state::ast_poll(s32 param)
 	}
 }
 
-void news_68k_base_state::config_scc(machine_config &config, const char *default_device_name)
+void news_68k_base_state::config_scc(machine_config &config, const char *default_device_name, int scc_clock)
 {
-	SCC85C30(config, m_scc, 4'915'200); // 3993600); TODO: configure clock as well
+	SCC85C30(config, m_scc, scc_clock);
 	m_scc->out_int_callback().set(
 		[this](int state)
 		{
@@ -688,7 +688,7 @@ void news_68k_desktop_state::nws1580(machine_config &config)
 	m_ram->set_default_value(0);
 
 	common(config);
-	config_scc(config, "terminal");
+	config_scc(config, "terminal", 3'993'600);
 
 	INPUT_MERGER_ANY_HIGH(config, m_irq7);
 	m_irq7->output_handler().set_inputline(m_cpu, INPUT_LINE_IRQ7);
@@ -742,7 +742,7 @@ void news_68k_laptop_state::nws1250(machine_config &config)
 	m_ram->set_default_value(0);
 
 	common(config);
-	config_scc(config, nullptr);
+	config_scc(config, nullptr, 4'915'200);
 	m_hid->irq_out<news_hid_hle_device::KEYBOARD>().set(m_irq5, FUNC(input_merger_device::in_w<0>));
 	m_hid->irq_out<news_hid_hle_device::MOUSE>().set(m_irq5, FUNC(input_merger_device::in_w<1>));
 
