@@ -23,7 +23,7 @@
 //#define VERBOSE (LOG_GENERAL)
 #include "logmacro.h"
 
-DEFINE_DEVICE_TYPE(DMAC_0266, dmac_0266_device, "dmac_0266", "Sony 0266 DMA Controller")
+DEFINE_DEVICE_TYPE(DMAC_0266, dmac_0266_device, "dmac_0266", "Sony 0266 WSC-ICKDMAC DMA Controller")
 
 dmac_0266_device::dmac_0266_device(machine_config const &mconfig, char const *tag, device_t *owner, u32 clock)
 	: device_t(mconfig, DMAC_0266, tag, owner, clock)

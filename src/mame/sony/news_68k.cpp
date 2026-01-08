@@ -2,14 +2,17 @@
 // copyright-holders:Patrick Mackinlay,Brice Onken
 
 /*
-   Sony NEWS M68K systems.
+   Sony NEWS single-processor 68k systems
 
    Sources:
      - http://wiki.netbsd.org/ports/news68k/
+     - http://bitsavers.org/pdf/sony/news/Sony_NEWS_Technical_Manual_3ed_199103.pdf
 
    TODO:
-     - mouse/keyboard
-     - graphics/slots
+     - Desktop mouse/keyboard
+     - Desktop graphics
+     - Sound
+     - Expansion slots
 
    The Sony NEWS Portable Workstation NWS-1250 is a "laptop" (weight of more than 8 Kg) with a black-and-white LCD (1120×780),
    a keyboard, a 3.5″ floppy disk drive, a (SCSI) harddisk, and interfaces for mouse, audio (phones, line in, mic in), SCSI,
@@ -101,6 +104,7 @@ __|              |         |  |ALS05A| |N82077   |   __             6 x 74F00J->
 #include "machine/input_merger.h"
 #include "imagedev/floppy.h"
 
+// TODO: set up mask logging
 #define VERBOSE LOG_GENERAL
 #include "logmacro.h"
 
@@ -160,12 +164,17 @@ protected:
 	template <irq_number Number> void irq_w(int state);
 	void int_check();
 
-	void timer(s32 param);
+	// TODO: sort all of these
+	void timer(s32 param); // TODO: timer works differently between desktop and laptop - make these specific
 	void timer_w(u8 data);
 
 	u32 bus_error_r();
 
+	u8 intst_r();
 	void poweron_w(u8 data);
+	void ast_w(u8 data);
+	void irq2_w(u8 data);
+	void ram_enable_w(u8 data);
 
 	// devices
 	required_device<m68030_device> m_cpu;
@@ -306,20 +315,21 @@ void news_68k_base_state::init_common()
 
 void news_68k_base_state::cpu_map(address_map &map)
 {
-
+	// external I/O TODO: is this needed for laptop NEWS?
+	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_base_state::bus_error_r));
 }
 
 void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 {
 	cpu_map(map);
-	map(0xe0cc0000, 0xe0cc0007).m(m_scsi, FUNC(ncr5380_device::map));
 
-	// Below this line is original
 	map(0xe0000000, 0xe000ffff).rom().region("eprom", 0);
 
 	// 0xe0c40000 // centronics
 	map(0xe0c80000, 0xe0c80003).m(m_fdc, FUNC(upd72067_device::map));
 	map(0xe0c80100, 0xe0c80100).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w));
+
+	map(0xe0cc0000, 0xe0cc0007).m(m_scsi, FUNC(ncr5380_device::map));
 
 	map(0xe0d00000, 0xe0d00007).m(m_hid, FUNC(news_hid_hle_device::map_68k));
 	map(0xe0d40000, 0xe0d40003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
@@ -337,21 +347,21 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 
 	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_desktop_state::timer_w));
 	map(0xe1080000, 0xe1080000).lw8([this](u8 data) { LOG("parity check enable 0x%02x\n", data); }, "parity_check_enable_w");
-	map(0xe1180000, 0xe1180000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ2, bool(data)); }, "irq2_w");
-	map(0xe1200000, 0xe1200000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer()); }, "ram_enable");
-	map(0xe1280000, 0xe1280000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ1, bool(data)); }, "ast_w");
+	map(0xe1180000, 0xe1180000).w(FUNC(news_68k_desktop_state::irq2_w));
+	map(0xe1200000, 0xe1200000).w(FUNC(news_68k_desktop_state::ram_enable_w));
+	map(0xe1280000, 0xe1280000).w(FUNC(news_68k_desktop_state::ast_w));
 	map(0xe1300000, 0xe1300000).lw8([this](u8 data) { LOG("cache enable 0x%02x (%s)\n", data, machine().describe_context()); }, "cache_enable_w");
-	// 0xe1380000 // power on/off
+	map(0xe1380000, 0xe1380000).w(FUNC(news_68k_desktop_state::poweron_w));
 	map(0xe1900000, 0xe1900000).lw8([this](u8 data) { LOG("cache clear 0x%02x\n", data); }, "cache_clear_w");
 	map(0xe1a00000, 0xe1a00000).lw8([this](u8 data) { LOG("parity interrupt clear 0x%02x\n", data); }, "parity_interrupt_clear_w");
 	// 0xe1b00000 // fdc vfo external/internal
 	map(0xe1c00000, 0xe1c000ff).rom().region("idrom", 0);
 	map(0xe1c00100, 0xe1c00103).lr8([this]() { LOG("Read sw1 = 0x%x\n", m_sw1->read()); return u8(m_sw1->read()); }, "sw1_r");
+	map(0xe1c00200, 0xe1c00200).r(FUNC(news_68k_desktop_state::intst_r));
 	// HACK: disable fdc irq for NetBSD
-	map(0xe1c00200, 0xe1c00200).lrw8([this]() { return m_intst; }, "intst_r", [this](u8 data) { irq_w<FDC>(0); m_parity_vector = data; }, "parity_vector_w");
+	map(0xe1c00200, 0xe1c00200).lw8([this](u8 data) { irq_w<FDC>(0); m_parity_vector = data; }, "parity_vector_w");
 
-	// external I/O
-	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_desktop_state::bus_error_r));
+
 #if DESKTOP_GRAPHICS
 	// POPC
 	//map(0xf0fc0000, 0xf0fc0003).unmaprw();
@@ -381,67 +391,13 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 {
 	cpu_map(map);
-	map.unmap_value_low();
 
 	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
 
 	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::poweron_w));
-	map(0xe10c0000, 0xe10c0000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ2, bool(data)); }, "irq2_w");
-
-	map(0xe1240000, 0xe1240007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_keyboard));
-	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
-	map(0xe12c0000, 0xe12c0003); // TODO: Centronics status/control
-	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
-	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
-
-	map(0xe1600000, 0xe1600000); // TODO: Centronics data
-	// The 0-3 is important here - the monitor ROM and NEWS-OS use different bytes to read the switch values.
-	map(0xe1680000, 0xe1680003).lr8([this] { return m_sw1->read(); }, "sw1_r");
-
-	map(0xe1780000, 0xe1780003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
-
-	// // above this line is 100% legit
-	map(0xe1040000, 0xe1040000).lw8([this](u8 data) { m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer()); }, "ram_enable"); // guess
-	map(0xe1040001, 0xe1040001).lw8([this](u8 data) { LOG("wut1\n"); }, "wut1"); // TODO: get rid of these
-	map(0xe1040002, 0xe1040002).lw8([this](u8 data) { LOG("wut2\n"); }, "wut2"); // guess
-	map(0xe1040003, 0xe1040003).lw8([this](u8 data) { LOG("wut3\n"); }, "wut3"); // guess
-	
-	map(0xe1080000, 0xe1080000); // TODO: random theory to investigate later: is this the memory controller? If I add more than 8MB of memory, does the written value the second time change?
-
-	map(0xe1200000, 0xe1200000).lr8([this] { return m_intst; }, "intst_r");
-
-	map(0xe2000000, 0xe20fffff).rom().region("krom", 0);
-	map(0xe4000000, 0xe401ffff).ram().share("vram");
-
-	map(0xe1580000, 0xe1580007).m(m_fdc, FUNC(n82077aa_device::map));
-	map(0xe15c0000, 0xe15c0000).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w));
-
-	map(0xe1a00000, 0xe1a03fff).lrw16(
-	[this](offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
-	[this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
-	map(0xe1a40000, 0xe1a40003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
-
-	map(0xe1c00000, 0xe1c00017).m(m_dma, FUNC(dmac_0266_device::map));
-	map(0xe1900000, 0xe190000f).m(m_scsi, FUNC(cxd1185_device::map));
-
-	map(0xe11c0000, 0xe11c000f); // TODO: abortctl?
-
-	// above this line is 50% legit
-	// below this line is wrong or unverified
-
-	map(0xe1100000, 0xe1100000).lw8([this](u8 data) {
-		// m_cpu->set_input_line(INPUT_LINE_IRQ1, bool(data));
-		if (data)
-		{
-			// TODO: this is an ugly hack, does it even work?
-			// LOG("Enabling AST polling\n");
-			m_ast_poller->adjust(attotime::from_hz(25.0), 0,attotime::from_hz(25.0));
-		}
-		else
-		{
-			m_cpu->set_input_line(INPUT_LINE_IRQ1, CLEAR_LINE);
-		}
-	}, "ast_w");
+	map(0xe1040000, 0xe1040000).w(FUNC(news_68k_laptop_state::ram_enable_w)); // TODO: this was an educated guess
+	map(0xe10c0000, 0xe10c0000).w(FUNC(news_68k_laptop_state::irq2_w));
+	map(0xe1100000, 0xe1100000).w(FUNC(news_68k_laptop_state::ast_w));
 	map(0xe1140000, 0xe1140003).lw8(
 	[this](offs_t offset, u8 data) {
 		if (offset == 0) {
@@ -454,6 +410,32 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 			LOG("timer_w offset = 0x%x data = 0x%x\n", offset, data);
 		}
 	}, "timer_w");
+	map(0xe11c0000, 0xe11c000f).nopw(); // TODO: ABORTCTL
+	map(0xe1200000, 0xe1200000).r(FUNC(news_68k_laptop_state::intst_r));
+
+	map(0xe1240000, 0xe1240007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_keyboard));
+	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
+	map(0xe12c0000, 0xe12c0003); // TODO: Centronics status/control
+	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
+	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
+	map(0xe1580000, 0xe1580007).m(m_fdc, FUNC(n82077aa_device::map));
+	map(0xe15c0000, 0xe15c0000).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w));
+	map(0xe1600000, 0xe1600000); // TODO: Centronics data
+
+	// The 0-3 is important here - the monitor ROM and NEWS-OS use different bytes to read the switch values.
+	map(0xe1680000, 0xe1680003).lr8([this] { return m_sw1->read(); }, "sw1_r");
+
+	map(0xe1780000, 0xe1780003).rw(m_scc, FUNC(z80scc_device::ab_dc_r), FUNC(z80scc_device::ab_dc_w));
+	map(0xe1900000, 0xe190000f).m(m_scsi, FUNC(cxd1185_device::map));
+	map(0xe1c00000, 0xe1c00017).m(m_dma, FUNC(dmac_0266_device::map));
+
+	map(0xe1a00000, 0xe1a03fff).lrw16(
+	[this](offs_t offset) { return m_net_ram[offset]; }, "net_ram_r",
+	[this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
+	map(0xe1a40000, 0xe1a40003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
+
+	map(0xe2000000, 0xe20fffff).rom().region("krom", 0);
+	map(0xe4000000, 0xe401ffff).ram().share("vram");
 
 	map(0xe1500000, 0xe1500000).lw8([this] (u32 data) { LOG("(%s) Write unknown 1 = 0x%x\n", machine().describe_context(), data); }, "unknown_1_w");
 	map(0xe1500001, 0xe1500001).lw8([] (u32) { /* TODO: LED control according to NetBSD */ }, "led_w");
@@ -462,23 +444,6 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	// WRONG: map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
 	map(0xe1480000, 0xe148001f).lr8([this] (offs_t offset) { LOG("%s crtc read offset %x\n", machine().describe_context(), offset); return 0xff; }, "lfbm_crtc_r"); // range should end at 1b?
 	map(0xe1480000, 0xe148001f).lw8([this] (offs_t offset, u8 data) { LOG("crtc offset %x 0x%02x\n", offset, data); }, "lfbm_crtc_w"); // range should end at 1b?
-
-	//map(0xe1c00010, 0xe1c00017).lrw8([this] { LOG("(%s) Read smth\n", machine().describe_context()); return 0x1; }, "unknown_3_r",[this] (u32 data) { LOG("(%s) Write smth = 0x%x\n", machine().describe_context(), data); }, "unknown_3_w");
-	// map(0xe1c00010, 0xe1c00017).r(FUNC(news_68k_laptop_state::bus_error_r));
-
-	//
-	// //map(0xe0f40000, 0xe0f40000).lr8([]() { return 0xfb; }, "scc_ridsr_r");
-	//
-	// map(0xe1080000, 0xe1080000).lw8([this](u8 data) { LOG("parity check enable 0x%02x\n", data); }, "parity_check_enable_w");
-
-	// map(0xe1180000, 0xe1180000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ2, bool(data)); }, "irq2_w");
-	// map(0xe1280000, 0xe1280000).lw8([this](u8 data) { m_cpu->set_input_line(INPUT_LINE_IRQ1, bool(data)); }, "ast_w");
-	// map(0xe1300000, 0xe1300000).lw8([this](u8 data) { LOG("cache enable 0x%02x (%s)\n", data, machine().describe_context()); }, "cache_enable_w");
-	// map(0xe1900000, 0xe1900000).lw8([this](u8 data) { LOG("cache clear 0x%02x\n", data); }, "cache_clear_w");
-	// map(0xe1a00000, 0xe1a00000).lw8([this](u8 data) { LOG("parity interrupt clear 0x%02x\n", data); }, "parity_interrupt_clear_w");
-
-	// external I/O
-	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_laptop_state::bus_error_r));
 }
 
 void news_68k_base_state::cpu_autovector_map(address_map &map)
@@ -489,7 +454,7 @@ void news_68k_base_state::cpu_autovector_map(address_map &map)
 	map(0xfffffff9, 0xfffffff9).lr8(NAME([]() { return m68000_base_device::autovector(4); }));
 	map(0xfffffffb, 0xfffffffb).lr8(NAME([this]() { return m_scc_irq_state ? m_scc->m1_r() : m68000_base_device::autovector(5); }));
 	map(0xfffffffd, 0xfffffffd).lr8(NAME([]() { return m68000_base_device::autovector(6); }));
-	map(0xffffffff, 0xffffffff).lr8(NAME([this]() { return m_parity_irq_state ? m_parity_vector : m68000_base_device::autovector(7); }));
+	map(0xffffffff, 0xffffffff).lr8(NAME([this]() { return m_parity_irq_state ? m_parity_vector : m68000_base_device::autovector(7); })); // TODO: no parity int on laptop NEWS?
 }
 
 template <news_68k_base_state::irq_number Number> void news_68k_base_state::irq_w(int state)
@@ -507,8 +472,8 @@ template <news_68k_base_state::irq_number Number> void news_68k_base_state::irq_
 void news_68k_base_state::int_check()
 {
 	// TODO: assume 43334443, masking?
-	static int const int_line[] = { INPUT_LINE_IRQ3, INPUT_LINE_IRQ4 };
-	static u8 const int_mask[] = { 0x71, 0x8e };
+	static int constexpr int_line[] = { INPUT_LINE_IRQ3, INPUT_LINE_IRQ4 };
+	static u8 constexpr int_mask[] = { 0x71, 0x8e };
 
 	for (unsigned i = 0; i < std::size(m_int_state); i++)
 	{
@@ -545,6 +510,11 @@ u32 news_68k_base_state::bus_error_r()
 	return 0;
 }
 
+u8 news_68k_base_state::intst_r()
+{
+	return m_intst;
+}
+
 void news_68k_base_state::poweron_w(u8 data)
 {
 	LOG("(%s) Write POWERON = 0x%x\n", machine().describe_context(), data);
@@ -553,6 +523,28 @@ void news_68k_base_state::poweron_w(u8 data)
 	{
 		machine().schedule_exit();
 	}
+}
+
+void news_68k_base_state::ast_w(u8 data)
+{
+	// TODO: The NWS-800 and NWS-3800 only set AST when the system transitions to user mode - is the same true here?
+	bool const ast = bool(data);
+	LOG("(%s) %s AST\n", machine().describe_context(), ast ? "Set" : "Cleared");
+	m_cpu->set_input_line(INPUT_LINE_IRQ1, ast);
+}
+
+void news_68k_base_state::irq2_w(u8 data)
+{
+	bool const irq2 = bool(data);
+	LOG("(%s) %s IRQ2\n", machine().describe_context(), irq2 ? "Set" : "Cleared");
+	m_cpu->set_input_line(INPUT_LINE_IRQ2, irq2);
+}
+
+void news_68k_base_state::ram_enable_w(u8 data)
+{
+	bool const ram_enable = bool(data);
+	LOG("(%s) %s RAM\n", machine().describe_context(), ram_enable ? "Enabled" : "Disabled");
+	m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer());
 }
 
 u32 news_68k_laptop_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect)
