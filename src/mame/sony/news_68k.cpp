@@ -4,9 +4,42 @@
 /*
    Sony NEWS single-processor 68k systems
 
+   Unlike the original model of the Sony NEWS (NWS-800 series), most of the NWS-1xxx series (with the exception of the
+   NWS-18xx/19xx) are single-processor 68030-based workstations. Sony developed a new family of workstations, popNEWS,
+   that included extra software including NEWS Desk, a suite of X11 applications. By the time NEWS-OS 4 came out, NEWS
+   Desk had proliferated across the entire lineup.
+
+   The NWS-12xx series uses the MPU-13 motherboard. The NWS-14xx, NWS-15xx, and PWS-15xx series all use the MPU-7
+   motherboard. The PWS-16xx and NWS-17xx series use the MPU-8 motherboard.
+
+   Supported:
+    - NWS-1250
+    - NWS-1580
+
+   Not supported yet:
+    - NWS-1230
+    - All other NWS/PWS-15xx workstations
+    - NWS-14xx/17xx series
+    - PWS-16xx series
+
+   Known NWS-1200 Series Base Configurations
+    - NWS-1230: Aug 1990, 4MB RAM (up to 12MB), 200MB HDD
+    - NWS-1250: Jul 1990, 8MB RAM (up to 12MB), 240MB HDD
+
+   Known NWS-1500 Series Base Configurations
+    - NWS-1510: ??? 19??, 4MB RAM (up to 16MB), 40MB HDD, NEWS-OS, optional display
+    - NWS-1520: ??? 19??, 4MB RAM (up to 16MB), diskless, NEWS-OS, monochrome display
+    - PWS-1520: Jan 1989, 4MB RAM (up to 16MB), 40MB HDD, POP-OS, monochrome display
+    - NWS-1530: ??? 19??, 4MB RAM (up to 16MB), 40MB HDD, NEWS-OS, color display
+    - PWS-1550: Nov 1988, 4MB RAM (up to 16MB), 91MB HDD, POP-OS + Media Bank, monochrome display
+    - PWS-1560: Apr 1989, 4MB RAM (up to 16MB), 91MB HDD, POP-OS + Media Bank, color display
+    - NWS-1580: ??? 1988, 4MB RAM (up to 16MB), 170MB HDD, NEWS-OS, color display
+
    Sources:
      - http://wiki.netbsd.org/ports/news68k/
      - http://bitsavers.org/pdf/sony/news/Sony_NEWS_Technical_Manual_3ed_199103.pdf
+     - https://katsu.watanabe.name/doc/sonynews/model.html
+     - https://goodoldbits.wordpress.com/2016/05/25/news-5-pop-news/
 
    TODO:
      - Desktop mouse/keyboard
@@ -104,7 +137,8 @@ __|              |         |  |ALS05A| |N82077   |   __             6 x 74F00J->
 #include "machine/input_merger.h"
 #include "imagedev/floppy.h"
 
-// TODO: set up mask logging
+#define LOG_INTERRUPT (1U << 1)
+#define LOG_TIMER (1U << 2)
 #define VERBOSE LOG_GENERAL
 #include "logmacro.h"
 
@@ -148,6 +182,7 @@ protected:
 	void common(machine_config &config);
 	void config_scc(machine_config &config, const char *default_device_name, int scc_clock);
 
+	// IRQ setup
 	enum irq_number : unsigned
 	{
 		IPIRQ1     = 0,
@@ -162,12 +197,8 @@ protected:
 	template <irq_number Number> void irq_w(int state);
 	void int_check();
 
-	// TODO: sort all of these
-	void timer(s32 param); // TODO: timer works differently between desktop and laptop - make these specific
-	void timer_w(u8 data);
-
+	// platform hardware
 	u32 bus_error_r();
-
 	u8 intst_r();
 	void poweron_w(u8 data);
 	void ast_w(u8 data);
@@ -196,6 +227,7 @@ protected:
 
 	emu_timer *m_timer;
 
+	// platform hardware state
 	u8 m_intst;
 	u8 m_parity_vector;
 	bool m_int_state[2];
@@ -224,15 +256,17 @@ protected:
 	virtual void machine_reset() override ATTR_COLD;
 
 	void desktop_cpu_map(address_map &map);
+	TIMER_CALLBACK_MEMBER(timer);
+	void timer_w(u8 data);
 
 #if DESKTOP_GRAPHICS
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect) { return 0; }
 #endif
 
+	// Desktop-specific devices
 	required_device<cxd1180_device> m_scsi;
 
 #if DESKTOP_GRAPHICS
-	// TODO: some (but not all) of this can be consolidated with the laptop state later
 	required_device<screen_device> m_screen;
 	required_device<bt458_device> m_ramdac;
 	required_device<ram_device> m_vram;
@@ -251,37 +285,50 @@ public:
 	}
 
 	void nws1250(machine_config &config) ATTR_COLD;
+
+protected:
 	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
-protected:
 	void laptop_cpu_map(address_map &map);
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect);
-	void itimer_w(u8 data);
-	void itimer(s32 param);
-	void ast_poll(s32 param);
+	TIMER_CALLBACK_MEMBER(timer);
+	void timer_w(offs_t offset, u8 data);
 
+	// Laptop-specific devices
 	required_device<cxd1185_device> m_scsi;
 	required_device<screen_device> m_lcd;
 	required_shared_ptr<u32> m_vram;
-	emu_timer *m_ast_poller;
 
+	// Laptop-specific platform hardware
 	bool m_lcd_enable = false;
 	bool m_lcd_dim = false;
+	u16 m_timer_rate = 0;
 };
 
 void news_68k_base_state::machine_start()
 {
 	m_led.resolve();
 
-	m_net_ram = std::make_unique<u16[]>(8192);
-
-	m_intst = 0;
-	for (bool &int_state : m_int_state)
-		int_state = false;
+	// Initialize state
+	u32 constexpr NET_RAM_SIZE = 8192;
+	m_net_ram = std::make_unique<u16[]>(NET_RAM_SIZE);
 
 	m_scc_irq_state = false;
 	m_parity_irq_state = false;
+	m_parity_vector = 0;
+	m_intst = 0;
+
+	for (bool &int_state : m_int_state)
+		int_state = false;
+
+	// Save state support
+	save_pointer(NAME(m_net_ram), NET_RAM_SIZE);
+	save_item(NAME(m_scc_irq_state));
+	save_item(NAME(m_parity_irq_state));
+	save_item(NAME(m_parity_vector));
+	save_item(NAME(m_intst));
+	save_item(NAME(m_int_state));
 }
 
 void news_68k_desktop_state::machine_start()
@@ -293,12 +340,15 @@ void news_68k_desktop_state::machine_start()
 void news_68k_laptop_state::machine_start()
 {
 	news_68k_base_state::machine_start();
-	m_timer = timer_alloc(FUNC(news_68k_laptop_state::itimer), this);
-	m_ast_poller = timer_alloc(FUNC(news_68k_laptop_state::ast_poll), this);
+	m_timer = timer_alloc(FUNC(news_68k_laptop_state::timer), this);
+
 	save_item(NAME(m_lcd_enable));
 	save_item(NAME(m_lcd_dim));
+	save_item(NAME(m_timer_rate));
+
 	m_lcd_enable = false;
 	m_lcd_dim = false;
+	m_timer_rate = 0;
 }
 
 void news_68k_desktop_state::machine_reset()
@@ -353,7 +403,7 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 	map(0xe1a00000, 0xe1a00000).lw8([this](u8 data) { LOG("parity interrupt clear 0x%02x\n", data); }, "parity_interrupt_clear_w");
 	// 0xe1b00000 // fdc vfo external/internal
 	map(0xe1c00000, 0xe1c000ff).rom().region("idrom", 0);
-	map(0xe1c00100, 0xe1c00103).lr8([this]() { LOG("Read sw1 = 0x%x\n", m_sw1->read()); return u8(m_sw1->read()); }, "sw1_r");
+	map(0xe1c00100, 0xe1c00103).lr8([this]() { return u8(m_sw1->read()); }, "sw1_r");
 	map(0xe1c00200, 0xe1c00200).r(FUNC(news_68k_desktop_state::intst_r));
 	// HACK: disable fdc irq for NetBSD
 	map(0xe1c00200, 0xe1c00200).lw8([this](u8 data) { irq_w<FDC>(0); m_parity_vector = data; }, "parity_vector_w");
@@ -395,18 +445,7 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe1040000, 0xe1040000).w(FUNC(news_68k_laptop_state::ram_enable_w)); // TODO: this was an educated guess
 	map(0xe10c0000, 0xe10c0000).w(FUNC(news_68k_laptop_state::irq2_w));
 	map(0xe1100000, 0xe1100000).w(FUNC(news_68k_laptop_state::ast_w));
-	map(0xe1140000, 0xe1140003).lw8(
-	[this](offs_t offset, u8 data) {
-		if (offset == 0) {
-			itimer_w(data);
-		} else if (offset == 1 && data) {
-			m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
-		} else {
-			// TODO: figure out how the last two bytes map to the clock frequency
-			// Can calc assuming 100Hz, and can verify by checking that SCSI init takes 10sec (or whatever the kernel is waiting for)
-			LOG("timer_w offset = 0x%x data = 0x%x\n", offset, data);
-		}
-	}, "timer_w");
+	map(0xe1140000, 0xe1140003).w(FUNC(news_68k_laptop_state::timer_w));
 	map(0xe11c0000, 0xe11c000f).nopw(); // TODO: ABORTCTL
 	map(0xe1200000, 0xe1200000).r(FUNC(news_68k_laptop_state::intst_r));
 
@@ -459,7 +498,7 @@ void news_68k_base_state::cpu_autovector_map(address_map &map)
 
 template <news_68k_base_state::irq_number Number> void news_68k_base_state::irq_w(int state)
 {
-	// LOG("irq number %d state %d\n", Number, state);
+	LOGMASKED(LOG_INTERRUPT, "irq number %d state %d\n", Number, state);
 
 	if (state)
 		m_intst |= 1U << Number;
@@ -485,21 +524,6 @@ void news_68k_base_state::int_check()
 			m_cpu->set_input_line(int_line[i], int_state);
 		}
 	}
-}
-
-void news_68k_base_state::timer_w(u8 data)
-{
-	LOG("timer_w 0x%02x\n", data);
-
-	if (data)
-		m_timer->adjust(attotime::from_hz(100));
-	else
-		m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
-}
-
-void news_68k_base_state::timer(s32 param)
-{
-	m_cpu->set_input_line(INPUT_LINE_IRQ6, ASSERT_LINE);
 }
 
 u32 news_68k_base_state::bus_error_r()
@@ -529,14 +553,14 @@ void news_68k_base_state::ast_w(u8 data)
 {
 	// TODO: The NWS-800/3800 only trigger AST once the system transitions to user mode (FC) - is the same true here?
 	bool const ast = bool(data);
-	LOG("(%s) %s AST\n", machine().describe_context(), ast ? "Set" : "Cleared");
+	LOGMASKED(LOG_INTERRUPT, "(%s) %s AST\n", machine().describe_context(), ast ? "Set" : "Cleared");
 	m_cpu->set_input_line(INPUT_LINE_IRQ1, ast);
 }
 
 void news_68k_base_state::irq2_w(u8 data)
 {
 	bool const irq2 = bool(data);
-	LOG("(%s) %s IRQ2\n", machine().describe_context(), irq2 ? "Set" : "Cleared");
+	LOGMASKED(LOG_INTERRUPT, "(%s) %s IRQ2\n", machine().describe_context(), irq2 ? "Set" : "Cleared");
 	m_cpu->set_input_line(INPUT_LINE_IRQ2, irq2);
 }
 
@@ -547,13 +571,67 @@ void news_68k_base_state::ram_enable_w(u8 data)
 	m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer());
 }
 
+void news_68k_desktop_state::timer_w(u8 data)
+{
+	LOGMASKED(LOG_TIMER, "timer_w 0x%02x\n", data);
+
+	if (data)
+		m_timer->adjust(attotime::from_hz(100));
+	else
+		m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
+}
+
+TIMER_CALLBACK_MEMBER(news_68k_desktop_state::timer)
+{
+	m_cpu->set_input_line(INPUT_LINE_IRQ6, ASSERT_LINE);
+}
+
+void news_68k_laptop_state::timer_w(offs_t offset, u8 data)
+{
+	switch (offset)
+	{
+		case 0:
+			LOGMASKED(LOG_TIMER, "timer %s\n", data ? "enabled" : "disabled");
+			if (data)
+			{
+				// TODO: conversion factor calculated assuming NEWS-OS programs timer to get 100Hz - need real HW info
+				constexpr double TIMER_CONVERSION_FACTOR = 0.1025;
+				attotime::from_hz(m_timer_rate * TIMER_CONVERSION_FACTOR);
+				m_timer->adjust(attotime::from_hz(100), 0, attotime::from_hz(100));
+			}
+			else
+			{
+				m_timer->adjust(attotime::never);
+				m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
+			}
+			break;
+		case 1:
+			if (data)
+				m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
+			break;
+		default:
+			bool const is_msb = offset == 2;
+			m_timer_rate &= 0xff << (is_msb ? 0 : 8);
+			m_timer_rate |= data << (is_msb ? 8 : 0);
+			LOGMASKED(LOG_TIMER, "timer_w set rate = 0x%x\n", m_timer_rate);
+			break;
+	}
+}
+
+TIMER_CALLBACK_MEMBER(news_68k_laptop_state::timer)
+{
+	m_cpu->set_input_line(INPUT_LINE_IRQ6, ASSERT_LINE);
+}
+
 u32 news_68k_laptop_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect)
 {
 	if (!m_lcd_enable)
 		return 0;
 
-	rgb_t const black = rgb_t::black();
-	rgb_t const white = m_lcd_dim ? rgb_t(191, 191, 191) : rgb_t::white();
+	rgb_t constexpr full_white = rgb_t::white();
+	rgb_t constexpr dim_white = rgb_t(191, 191, 191);
+	rgb_t constexpr black = rgb_t::black();
+	rgb_t const white = m_lcd_dim ? dim_white : full_white;
 
 	u32 const *pixel_pointer = m_vram;
 
@@ -587,7 +665,7 @@ void news_68k_base_state::common(machine_config &config)
 	INPUT_MERGER_ANY_HIGH(config, m_irq5);
 	m_irq5->output_handler().set_inputline(m_cpu, INPUT_LINE_IRQ5);
 
-	AM7990(config, m_net, 20_MHz_XTAL); // TODO: need actual xtal frequency for each flavor
+	AM7990(config, m_net, 20_MHz_XTAL);
 	m_net->intr_out().set(FUNC(news_68k_base_state::irq_w<LANCE>)).invert();
 	m_net->dma_in().set([this](offs_t offset) { return m_net_ram[(offset >> 1) & 0x1fff]; });
 	m_net->dma_out().set([this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[(offset >> 1) & 0x1fff]); });
@@ -616,37 +694,7 @@ void news_68k_base_state::common(machine_config &config)
 	SOFTWARE_LIST(config, "software_list").set_original("sony_news").set_filter("CISC");
 }
 
-void news_68k_laptop_state::itimer_w(u8 data)
-{
-	LOG("timer %s\n", data ? "enabled" : "disabled"); // TODO: mask
-	if (data)
-	{
-		m_timer->adjust(attotime::from_hz(100), 0, attotime::from_hz(100));
-	}
-	else
-	{
-		m_timer->adjust(attotime::never);
-		m_cpu->set_input_line(INPUT_LINE_IRQ6, CLEAR_LINE);
-	}
-}
-
-void news_68k_laptop_state::itimer(s32 param)
-{
-	m_cpu->set_input_line(INPUT_LINE_IRQ6, ASSERT_LINE);
-}
-
-void news_68k_laptop_state::ast_poll(s32 param)
-{
-	// LOG("AST poll, FC = 0x%x vs usr mode opts 0x%x and 0x%x\n", m_cpu->get_fc(), M68K_FC_USER_DATA, M68K_FC_USER_PROGRAM);
-	if (m_cpu->get_fc() == M68K_FC_USER_DATA || m_cpu->get_fc() == M68K_FC_USER_PROGRAM)
-	{
-		// LOG("AST set! Disabling polling.\n");
-		m_cpu->set_input_line(INPUT_LINE_IRQ1, ASSERT_LINE);
-		m_ast_poller->adjust(attotime::never);
-	}
-}
-
-void news_68k_base_state::config_scc(machine_config &config, const char *default_device_name, int scc_clock)
+void news_68k_base_state::config_scc(machine_config &config, const char *default_device_name, const int scc_clock)
 {
 	SCC85C30(config, m_scc, scc_clock);
 	m_scc->out_int_callback().set(
@@ -681,10 +729,10 @@ void news_68k_desktop_state::nws1580(machine_config &config)
 
 	// 16 SIMM slots for RAM arranged as two groups of 8 slots, with each bank
 	// corresponding to a pair of slots in each group; first bank soldered in
+	// NWS-15xx series comes with 4MB standard and uses NWA-028 4MB (no parity) RAM expansion kits
 	RAM(config, m_ram);
-	m_ram->set_default_size("8M");
-	// TODO: assume only 1M modules are supported
-	m_ram->set_extra_options("4M,12M,16M");
+	m_ram->set_default_size("4M");
+	m_ram->set_extra_options("8M,12M,16M");
 	m_ram->set_default_value(0);
 
 	common(config);
@@ -738,7 +786,7 @@ void news_68k_laptop_state::nws1250(machine_config &config)
 
 	RAM(config, m_ram);
 	m_ram->set_default_size("8M");
-	m_ram->set_extra_options("4M,12M");
+	m_ram->set_extra_options("4M,12M"); // NWS-1230 came with 4MB standard, 1250 with 8MB
 	m_ram->set_default_value(0);
 
 	common(config);
@@ -755,48 +803,27 @@ void news_68k_laptop_state::nws1250(machine_config &config)
 	FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
 
 	// scsi host adapter
-	// TODO: real frequency for clock
-	NSCSI_CONNECTOR(config, "scsi:7").option_set("cxd1185", CXD1185).clock(16_MHz_XTAL).machine_config(
-		[this](device_t *device)
-		{
-			auto &adapter = downcast<cxd1185_device &>(*device);
+	// TODO: 32/2 is most likely - 16 is the upper limit of the CXD1185's input range and there is a 32MHz XTAL nearby
+	NSCSI_CONNECTOR(config, "scsi:7").option_set("cxd1185", CXD1185)
+		.clock(32_MHz_XTAL / 2)
+		.machine_config(
+			[this](device_t *device)
+			{
+				auto &adapter = downcast<cxd1185_device &>(*device);
 
-			adapter.irq_out_cb().set(*this, FUNC(news_68k_laptop_state::irq_w<SCSI>));
-			adapter.irq_out_cb().append(m_dma, FUNC(dmac_0266_device::eop_w));
-			adapter.drq_out_cb().set(m_dma, FUNC(dmac_0266_device::req_w));
+				adapter.irq_out_cb().set(*this, FUNC(news_68k_laptop_state::irq_w<SCSI>));
+				adapter.irq_out_cb().append(m_dma, FUNC(dmac_0266_device::eop_w));
+				adapter.drq_out_cb().set(m_dma, FUNC(dmac_0266_device::req_w));
 
-			subdevice<dmac_0266_device>(":dma")->dma_r_cb().set(adapter, FUNC(cxd1185_device::dma_r));
-			subdevice<dmac_0266_device>(":dma")->dma_w_cb().set(adapter, FUNC(cxd1185_device::dma_w));
-		});
+				subdevice<dmac_0266_device>(":dma")->dma_r_cb().set(adapter, FUNC(cxd1185_device::dma_r));
+				subdevice<dmac_0266_device>(":dma")->dma_w_cb().set(adapter, FUNC(cxd1185_device::dma_w));
+			});
 
 	// Integrated LCD panel
 	SCREEN(config, m_lcd, SCREEN_TYPE_LCD);
 	m_lcd->set_raw(52416000, 1120, 0, 1120, 780, 0, 780);
 	m_lcd->set_screen_update(FUNC(news_68k_laptop_state::screen_update));
 }
-
-static INPUT_PORTS_START(nws15x0)
-	PORT_START("SW1")
-	PORT_DIPNAME(0x07, 0x07, "Display") PORT_DIPLOCATION("SW1:1,2,3")
-	PORT_DIPSETTING(0x07, "Console")
-	PORT_DIPSETTING(0x06, "NWB-512")
-	PORT_DIPSETTING(0x03, "NWB-225A")
-	PORT_DIPSETTING(0x00, "Autoselect")
-
-	PORT_DIPNAME(0x08, 0x08, "Boot Device") PORT_DIPLOCATION("SW1:4")
-	PORT_DIPSETTING(0x08, "SCSI")
-	PORT_DIPSETTING(0x00, "Floppy")
-
-	PORT_DIPNAME(0x10, 0x10, "Automatic Boot") PORT_DIPLOCATION("SW1:5")
-	PORT_DIPSETTING(0x10, DEF_STR(Off))
-	PORT_DIPSETTING(0x00, DEF_STR(On))
-
-	PORT_DIPNAME(0x20, 0x20, "Diagnostic Mode") PORT_DIPLOCATION("SW1:6")
-	PORT_DIPSETTING(0x20, DEF_STR(Off))
-	PORT_DIPSETTING(0x00, DEF_STR(On))
-
-	PORT_DIPUNUSED_DIPLOC(0xc0, 0xc0, "SW1:7,8")
-INPUT_PORTS_END
 
 static INPUT_PORTS_START(nws12x0)
 	PORT_START("SW1")
@@ -822,6 +849,29 @@ static INPUT_PORTS_START(nws12x0)
 	PORT_DIPSETTING(0x00, DEF_STR(On))
 
 	PORT_DIPUNUSED_DIPLOC(0x80, 0x80, "SW1:8")
+INPUT_PORTS_END
+
+static INPUT_PORTS_START(nws15x0)
+	PORT_START("SW1")
+	PORT_DIPNAME(0x07, 0x07, "Display") PORT_DIPLOCATION("SW1:1,2,3")
+	PORT_DIPSETTING(0x07, "Console")
+	PORT_DIPSETTING(0x06, "NWB-512")
+	PORT_DIPSETTING(0x03, "NWB-225A")
+	PORT_DIPSETTING(0x00, "Autoselect")
+
+	PORT_DIPNAME(0x08, 0x08, "Boot Device") PORT_DIPLOCATION("SW1:4")
+	PORT_DIPSETTING(0x08, "SCSI")
+	PORT_DIPSETTING(0x00, "Floppy")
+
+	PORT_DIPNAME(0x10, 0x10, "Automatic Boot") PORT_DIPLOCATION("SW1:5")
+	PORT_DIPSETTING(0x10, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+
+	PORT_DIPNAME(0x20, 0x20, "Diagnostic Mode") PORT_DIPLOCATION("SW1:6")
+	PORT_DIPSETTING(0x20, DEF_STR(Off))
+	PORT_DIPSETTING(0x00, DEF_STR(On))
+
+	PORT_DIPUNUSED_DIPLOC(0xc0, 0xc0, "SW1:7,8")
 INPUT_PORTS_END
 
 ROM_START(nws1250)
