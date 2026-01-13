@@ -904,12 +904,12 @@ ROM_START(nws1250)
 	//ROM_LOAD("n1250_50292_am27s21pc.ic36", 0x000, 0x100, NO_DUMP)
 	ROM_LOAD("idrom.bin", 0x000, 0x100, CRC(8cf47e35) SHA1(3eef8168ffb8f7879bcbac9e8fee2115a191ae83) BAD_DUMP)
 
-	// 2 x MB834200A (mask ROM, undumped, from system with monitor 2.0)
+	// 2 x MB834200A (mask ROM, undumped, from system with monitor 2.0A)
 	ROM_REGION32_BE(0x100000, "krom", ROMREGION_ERASEFF)
 	// ROM_LOAD64_BYTE("mb834200a-20_051_aa_9020_g07.ic1",  0x00000, 0x20000, NO_DUMP)
 	// ROM_LOAD64_BYTE("mb834200a-20_052_aa_9002_g02.ic13", 0x00001, 0x20000, NO_DUMP)
 
-	// 2 x MB834200B (mask ROM, from system with monitor 2.0A)
+	// 2 x MB834200B (mask ROM, from system with monitor 2.0)
 	ROM_LOAD32_DWORD("mb834200b_u44.bin", 0x00000, 0x80000, CRC(6a50162a) SHA1(92383c3ad7aaa7b2f9c8cf781c6dcddffe7b9af8))
 	ROM_LOAD32_DWORD("mb834200b_u45.bin", 0x80000, 0x80000, CRC(f2886c9b) SHA1(76363bb7ef884bcf51c50ac56963d513fe776c2e))
 ROM_END
