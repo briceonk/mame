@@ -139,7 +139,7 @@ __|              |         |  |ALS05A| |N82077   |   __             6 x 74F00J->
 
 #define LOG_INTERRUPT (1U << 1)
 #define LOG_TIMER (1U << 2)
-#define VERBOSE LOG_GENERAL
+#define VERBOSE (LOG_GENERAL|LOG_TIMER)
 #include "logmacro.h"
 
 #define DESKTOP_GRAPHICS 0
@@ -200,15 +200,16 @@ protected:
 	// platform hardware
 	u32 bus_error_r();
 	u8 intst_r();
-	void poweron_w(u8 data);
 	void ast_w(u8 data);
 	void irq2_w(u8 data);
+	void led_w(u8 data);
+	void poweron_w(u8 data);
 	void ram_enable_w(u8 data);
 
 	// devices
 	required_device<m68030_device> m_cpu;
 	required_device<ram_device> m_ram;
-	required_device<dmac_0266_device> m_dma; // TODO: move dma config to subcls b/c it refers to different scctrl?
+	required_device<dmac_0266_device> m_dma;
 	required_device<m48t02_device> m_rtc;
 	required_device<z80scc_device> m_scc;
 	required_device<am7990_device> m_net;
@@ -302,7 +303,6 @@ protected:
 
 	// Laptop-specific platform hardware
 	bool m_lcd_enable = false;
-	bool m_lcd_dim = false;
 	u16 m_timer_rate = 0;
 };
 
@@ -343,11 +343,9 @@ void news_68k_laptop_state::machine_start()
 	m_timer = timer_alloc(FUNC(news_68k_laptop_state::timer), this);
 
 	save_item(NAME(m_lcd_enable));
-	save_item(NAME(m_lcd_dim));
 	save_item(NAME(m_timer_rate));
 
 	m_lcd_enable = false;
-	m_lcd_dim = false;
 	m_timer_rate = 0;
 }
 
@@ -473,15 +471,15 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe2000000, 0xe20fffff).rom().region("krom", 0);
 	map(0xe4000000, 0xe401ffff).ram().share("vram");
 
-	map(0xe1500000, 0xe1500000).lw8([this] (u32 data) { LOG("(%s) Write unknown 1 = 0x%x\n", machine().describe_context(), data); }, "unknown_1_w");
-	map(0xe1500001, 0xe1500001).lw8([] (u32) { /* TODO: LED control according to NetBSD */ }, "led_w");
-	map(0xe1500002, 0xe1500002).lw8([this] (u32 data) { m_lcd_enable = bool(data); LOG("(%s) %s LCD\n", machine().describe_context(), m_lcd_enable ? "Enabled" : "Disabled"); }, "lcd_enable_w");
+	map(0xe1480000, 0xe148001f).nopw(); // TODO: HD64646FS LCD Controller (Hitachi CRTC-compatible)
+	// TODO: Unsure what 0xe1500000 is - is written to 2 by the monitor ROM before memory probe, and cleared afterwards.
+	map(0xe1500001, 0xe1500001).w(FUNC(news_68k_laptop_state::led_w));
+	map(0xe1500002, 0xe1500002).lw8([this] (u32 data) {
+		m_lcd_enable = bool(data);
+		LOG("(%s) %s LCD\n", machine().describe_context(), m_lcd_enable ? "Enabled" : "Disabled");
+	}, "lcd_enable_w");
 
-	// WRONG: map(0xe1a00000, 0xe1a00003).lw32([this] (u32 data) { m_lcd_dim = BIT(data, 0); }, "lcd_dim_w");
-	map(0xe1480000, 0xe148001f).lr8([this] (offs_t offset) { LOG("%s crtc read offset %x\n", machine().describe_context(), offset); return 0xff; }, "lfbm_crtc_r"); // range should end at 1b?
-	map(0xe1480000, 0xe148001f).lw8([this] (offs_t offset, u8 data) { LOG("crtc offset %x 0x%02x\n", offset, data); }, "lfbm_crtc_w"); // range should end at 1b?
-
-	// external I/O TODO: is this needed for laptop NEWS?
+	// external I/O
 	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_laptop_state::bus_error_r));
 }
 
@@ -539,16 +537,6 @@ u8 news_68k_base_state::intst_r()
 	return m_intst;
 }
 
-void news_68k_base_state::poweron_w(u8 data)
-{
-	LOG("(%s) Write POWERON = 0x%x\n", machine().describe_context(), data);
-
-	if (!machine().side_effects_disabled() && !data)
-	{
-		machine().schedule_exit();
-	}
-}
-
 void news_68k_base_state::ast_w(u8 data)
 {
 	// TODO: The NWS-800/3800 only trigger AST once the system transitions to user mode (FC) - is the same true here?
@@ -564,10 +552,25 @@ void news_68k_base_state::irq2_w(u8 data)
 	m_cpu->set_input_line(INPUT_LINE_IRQ2, irq2);
 }
 
+void news_68k_base_state::led_w(u8 data)
+{
+	m_led[0] = BIT(data, 0);
+	m_led[1] = BIT(data, 1);
+}
+
+void news_68k_base_state::poweron_w(u8 data)
+{
+	LOG("(%s) Write POWERON = 0x%x\n", machine().describe_context(), data);
+
+	if (!machine().side_effects_disabled() && !data)
+	{
+		machine().schedule_exit();
+	}
+}
+
 void news_68k_base_state::ram_enable_w(u8 data)
 {
-	bool const ram_enable = bool(data);
-	LOG("(%s) %s RAM\n", machine().describe_context(), ram_enable ? "Enabled" : "Disabled");
+	LOG("(%s) Enabled RAM\n", machine().describe_context());
 	m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer());
 }
 
@@ -594,10 +597,12 @@ void news_68k_laptop_state::timer_w(offs_t offset, u8 data)
 			LOGMASKED(LOG_TIMER, "timer %s\n", data ? "enabled" : "disabled");
 			if (data)
 			{
-				// TODO: conversion factor calculated assuming NEWS-OS programs timer to get 100Hz - need real HW info
-				constexpr double TIMER_CONVERSION_FACTOR = 0.1025;
-				attotime::from_hz(m_timer_rate * TIMER_CONVERSION_FACTOR);
-				m_timer->adjust(attotime::from_hz(100), 0, attotime::from_hz(100));
+				// TODO: conversion factor calculated assuming NEWS-OS programs timer to get 100Hz as is common on NEWS
+				//       systems - need real HW info
+				constexpr double TIMER_CONVERSION_FACTOR = 0.102459016;
+				const auto rate = attotime::from_hz(m_timer_rate * TIMER_CONVERSION_FACTOR);
+				LOGMASKED(LOG_TIMER, "Enabling timer at rate %f Hz\n", rate.as_hz());
+				m_timer->adjust(rate, 0, rate);
 			}
 			else
 			{
@@ -628,11 +633,6 @@ u32 news_68k_laptop_state::screen_update(screen_device &screen, bitmap_rgb32 &bi
 	if (!m_lcd_enable)
 		return 0;
 
-	rgb_t constexpr full_white = rgb_t::white();
-	rgb_t constexpr dim_white = rgb_t(191, 191, 191);
-	rgb_t constexpr black = rgb_t::black();
-	rgb_t const white = m_lcd_dim ? dim_white : full_white;
-
 	u32 const *pixel_pointer = m_vram;
 
 	for (int y = screen.visible_area().min_y; y <= screen.visible_area().max_y; y++)
@@ -641,8 +641,9 @@ u32 news_68k_laptop_state::screen_update(screen_device &screen, bitmap_rgb32 &bi
 		{
 			u32 const pixel_data = *pixel_pointer++;
 
+			// TODO: Does the NWS-1200 have a dim capability like the 3200?
 			for (unsigned i = 0; i < 32; i++)
-				bitmap.pix(y, x + i) = BIT(pixel_data, 31 - i) ? black : white;
+				bitmap.pix(y, x + i) = BIT(pixel_data, 31 - i) ? rgb_t::black() : rgb_t::white();
 		}
 	}
 
@@ -886,10 +887,12 @@ ROM_START(nws1250)
 	//ROM_LOAD("n1250_50292_am27s21pc.ic36", 0x000, 0x100, NO_DUMP)
 	ROM_LOAD("idrom.bin", 0x000, 0x100, CRC(8cf47e35) SHA1(3eef8168ffb8f7879bcbac9e8fee2115a191ae83) BAD_DUMP)
 
-	// 2 x MB834200A (mask ROM)
+	// 2 x MB834200A (mask ROM, undumped, from system with monitor 2.0)
 	ROM_REGION32_BE(0x100000, "krom", ROMREGION_ERASEFF)
 	// ROM_LOAD64_BYTE("mb834200a-20_051_aa_9020_g07.ic1",  0x00000, 0x20000, NO_DUMP)
 	// ROM_LOAD64_BYTE("mb834200a-20_052_aa_9002_g02.ic13", 0x00001, 0x20000, NO_DUMP)
+
+	// 2 x MB834200B (mask ROM, from system with monitor 2.0A)
 	ROM_LOAD32_DWORD("mb834200b_u44.bin", 0x00000, 0x80000, CRC(6a50162a) SHA1(92383c3ad7aaa7b2f9c8cf781c6dcddffe7b9af8))
 	ROM_LOAD32_DWORD("mb834200b_u45.bin", 0x80000, 0x80000, CRC(f2886c9b) SHA1(76363bb7ef884bcf51c50ac56963d513fe776c2e))
 ROM_END
@@ -914,4 +917,4 @@ ROM_END
 
 //   YEAR  NAME     PARENT  COMPAT  MACHINE  INPUT    CLASS                   INIT         COMPANY  FULLNAME    FLAGS
 COMP(1988, nws1580, 0,      0,      nws1580, nws15x0, news_68k_desktop_state, init_common, "Sony",  "NWS-1580", MACHINE_NOT_WORKING)
-COMP(1990, nws1250, 0,      0,      nws1250, nws12x0, news_68k_laptop_state,  init_common, "Sony",  "NWS-1250", MACHINE_NOT_WORKING)
+COMP(1990, nws1250, 0,      0,      nws1250, nws12x0, news_68k_laptop_state,  init_common, "Sony",  "NWS-1250", MACHINE_NO_SOUND)
