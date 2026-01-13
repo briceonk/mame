@@ -176,7 +176,7 @@ protected:
 	virtual void machine_start() override ATTR_COLD;
 
 	// address maps
-	void cpu_autovector_map(address_map &map) ATTR_COLD;
+	virtual void cpu_autovector_map(address_map &map) ATTR_COLD;
 
 	// machine config
 	void common(machine_config &config);
@@ -230,10 +230,8 @@ protected:
 
 	// platform hardware state
 	u8 m_intst;
-	u8 m_parity_vector;
 	bool m_int_state[2];
 	bool m_scc_irq_state;
-	bool m_parity_irq_state;
 };
 
 class news_68k_desktop_state : public news_68k_base_state
@@ -257,6 +255,7 @@ protected:
 	virtual void machine_reset() override ATTR_COLD;
 
 	void desktop_cpu_map(address_map &map);
+	virtual void cpu_autovector_map(address_map &map) override ATTR_COLD;
 	TIMER_CALLBACK_MEMBER(timer);
 	void timer_w(u8 data);
 
@@ -272,6 +271,10 @@ protected:
 	required_device<bt458_device> m_ramdac;
 	required_device<ram_device> m_vram;
 #endif
+
+	// Desktop-specific platform hardware
+	bool m_parity_irq_state;
+	u8 m_parity_vector;
 };
 
 class news_68k_laptop_state : public news_68k_base_state
@@ -292,6 +295,7 @@ protected:
 	virtual void machine_reset() override ATTR_COLD;
 
 	void laptop_cpu_map(address_map &map);
+	virtual void cpu_autovector_map(address_map &map) override ATTR_COLD;
 	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect);
 	TIMER_CALLBACK_MEMBER(timer);
 	void timer_w(offs_t offset, u8 data);
@@ -315,8 +319,6 @@ void news_68k_base_state::machine_start()
 	m_net_ram = std::make_unique<u16[]>(NET_RAM_SIZE);
 
 	m_scc_irq_state = false;
-	m_parity_irq_state = false;
-	m_parity_vector = 0;
 	m_intst = 0;
 
 	for (bool &int_state : m_int_state)
@@ -325,8 +327,6 @@ void news_68k_base_state::machine_start()
 	// Save state support
 	save_pointer(NAME(m_net_ram), NET_RAM_SIZE);
 	save_item(NAME(m_scc_irq_state));
-	save_item(NAME(m_parity_irq_state));
-	save_item(NAME(m_parity_vector));
 	save_item(NAME(m_intst));
 	save_item(NAME(m_int_state));
 }
@@ -335,6 +335,12 @@ void news_68k_desktop_state::machine_start()
 {
 	news_68k_base_state::machine_start();
 	m_timer = timer_alloc(FUNC(news_68k_desktop_state::timer), this);
+
+	m_parity_irq_state = false;
+	m_parity_vector = 0;
+
+	save_item(NAME(m_parity_irq_state));
+	save_item(NAME(m_parity_vector));
 }
 
 void news_68k_laptop_state::machine_start()
@@ -472,7 +478,7 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe4000000, 0xe401ffff).ram().share("vram");
 
 	map(0xe1480000, 0xe148001f).nopw(); // TODO: HD64646FS LCD Controller (Hitachi CRTC-compatible)
-	// TODO: Unsure what 0xe1500000 is - is written to 2 by the monitor ROM before memory probe, and cleared afterwards.
+	// TODO: Unsure what 0xe1500000 is - the monitor ROM sets it to 0x2 before memory probe, and clears it afterwards.
 	map(0xe1500001, 0xe1500001).w(FUNC(news_68k_laptop_state::led_w));
 	map(0xe1500002, 0xe1500002).lw8([this] (u32 data) {
 		m_lcd_enable = bool(data);
@@ -491,7 +497,18 @@ void news_68k_base_state::cpu_autovector_map(address_map &map)
 	map(0xfffffff9, 0xfffffff9).lr8(NAME([]() { return m68000_base_device::autovector(4); }));
 	map(0xfffffffb, 0xfffffffb).lr8(NAME([this]() { return m_scc_irq_state ? m_scc->m1_r() : m68000_base_device::autovector(5); }));
 	map(0xfffffffd, 0xfffffffd).lr8(NAME([]() { return m68000_base_device::autovector(6); }));
-	map(0xffffffff, 0xffffffff).lr8(NAME([this]() { return m_parity_irq_state ? m_parity_vector : m68000_base_device::autovector(7); })); // TODO: no parity int on laptop NEWS?
+}
+
+void news_68k_desktop_state::cpu_autovector_map(address_map &map)
+{
+	news_68k_base_state::cpu_autovector_map(map);
+	map(0xffffffff, 0xffffffff).lr8(NAME([this]() { return m_parity_irq_state ? m_parity_vector : m68000_base_device::autovector(7); }));
+}
+
+void news_68k_laptop_state::cpu_autovector_map(address_map &map)
+{
+	news_68k_base_state::cpu_autovector_map(map);
+	map(0xffffffff, 0xffffffff).lr8(NAME([]() { return m68000_base_device::autovector(7); }));
 }
 
 template <news_68k_base_state::irq_number Number> void news_68k_base_state::irq_w(int state)
