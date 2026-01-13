@@ -15,6 +15,7 @@
 #include "modules/lib/osdlib.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <list>
 #include <optional>
@@ -56,7 +57,6 @@ public:
 
 	// getters
 	drccodeptr near() const { return m_near; }
-	drccodeptr base() const { return m_base; }
 	drccodeptr top() const { return m_top; }
 
 	// pointer checking
@@ -65,7 +65,7 @@ public:
 	bool generating_code() const { return (m_codegen != nullptr); }
 
 	// cache memory allocation
-	void flush();
+	void flush() noexcept;
 	void *alloc(std::size_t bytes, std::align_val_t align) noexcept;
 	void *alloc_near(std::size_t bytes, std::align_val_t align) noexcept;
 	void *alloc_temporary(std::size_t bytes, std::align_val_t align) noexcept;
@@ -110,11 +110,15 @@ public:
 	}
 
 	// codegen helpers
-	void codegen_init() noexcept;
-	void codegen_complete() noexcept;
 	drccodeptr *begin_codegen(uint32_t reserve_bytes) noexcept;
 	drccodeptr end_codegen();
 	void request_oob_codegen(drc_oob_delegate &&callback, void *param1 = nullptr, void *param2 = nullptr);
+
+	void codegen_complete() noexcept
+	{
+		if (!m_rwx && (m_top > m_rwbase))
+			make_executable();
+	}
 
 private:
 	// largest block of code that can be generated at once
@@ -136,42 +140,51 @@ private:
 		void *              m_param2;       // 2nd pointer parameter
 	};
 
-	std::optional<osd::virtual_memory_allocation> m_cache;
-
 	struct free_link
 	{
 		free_link *         m_next;         // pointer to the next guy
 	};
+
+	using free_link_array = std::array<free_link *, MAX_PERMANENT_ALLOC / CACHE_ALIGNMENT>;
+
+	static std::size_t free_link_bucket(std::size_t bytes) noexcept;
+
+	void ensure_writable(drccodeptr ptr) noexcept;
+	void make_executable() noexcept;
+
+	std::optional<osd::virtual_memory_allocation> m_cache;
 
 	// core parameters
 	drccodeptr  m_near;             // pointer to the near part of the cache
 	drccodeptr  m_neartop;          // unallocated area of near cache
 	drccodeptr  m_base;             // end of near cache
 	drccodeptr  m_top;              // end of temporary allocations and code
+	drccodeptr  m_rwbase;           // start of writable portion of cache
 	drccodeptr  m_limit;            // limit for temporary allocations and code (page-aligned)
 	drccodeptr  m_end;              // first allocated byte in cache
 	drccodeptr  m_codegen;          // start of current generated code block
 	std::size_t m_size;             // size of the cache in bytes
-	bool        m_executable;       // whether cached code is currently executable
 	bool        m_rwx;              // whether pages can be simultaneously writable and executable
 
 	// oob management
-	std::list<oob_handler> m_oob_list;      // list of active oob handlers
-	std::list<oob_handler> m_oob_free;      // list of recyclable oob handlers
+	std::list<oob_handler>  m_oob_list;      // list of active oob handlers
+	std::list<oob_handler>  m_oob_free;      // list of recyclable oob handlers
 
 	// free lists
-	free_link *         m_free[MAX_PERMANENT_ALLOC / CACHE_ALIGNMENT];
-	free_link *         m_nearfree[MAX_PERMANENT_ALLOC / CACHE_ALIGNMENT];
+	free_link_array         m_free;
+	free_link_array         m_nearfree;
 
 	// stats
 	std::size_t m_max_temporary;
 	uint32_t    m_flush_count;
 #if defined(MAME_DEBUG)
 	uint32_t    m_near_allocated;
+	uint32_t    m_near_padding;
 	uint32_t    m_near_oversize;
 	uint32_t    m_near_freed;
-	uint32_t	m_near_reused;
+	uint32_t    m_near_reused;
 	uint32_t    m_cache_allocated;
+	uint32_t    m_cache_padding;
 	uint32_t    m_cache_oversize;
 	uint32_t    m_cache_freed;
 	uint32_t    m_cache_reused;

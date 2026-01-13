@@ -308,6 +308,9 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 	z_index[0] = m_blitter_regs[B_Z3];
 	s32 z_inc = m_blitter_regs[B_ZINC];
 
+	u16 a1_clipx = m_blitter_regs[A1_CLIP] & 0x7fff;
+	u16 a1_clipy = (m_blitter_regs[A1_CLIP] >> 16) & 0x7fff;
+
 	LOGMASKED(LOG_BLITS, "%s:Blit!\n", machine().describe_context());
 	LOGMASKED(LOG_BLITS, "  a1_base  = %08X\n", a1_base);
 	LOGMASKED(LOG_BLITS, "  a1_pitch = %d\n", a1_pitch);
@@ -336,7 +339,8 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 
 	/* check for unhandled command bits */
 	// NOTE: disabled check for GOURZ (it's pretty obvious everywhere is used)
-	if (COMMAND & 0x24000000)
+	// NOTE: SRCENX also unhandled (command & 4)
+	if (COMMAND & 0x24000080)
 		LOGMASKED(LOG_UNHANDLED_BLITS, "Blitter unhandled: these command bits: %08X\n", COMMAND & 0x24000000);
 
 	/* top of the outer loop */
@@ -391,13 +395,18 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 				}
 
 				/* handle clipping (CLIP_A1) */
-				// TODO: shouldn't this apply to A1 only?
-				// - will cause glitches in atarikrt gameplay, maybe an HW bug is in effect?
+				// NOTE: we need to rollback from the *updated* A1 value target
+				// - BIOS spinning cube
+				// - atarikrt track borders
+				// - spacewar intro
+				// - missil3d (uses both clipping types)
 				if (COMMAND & 0x00000040)
 				{
-					if (adest_x < 0 || adest_y < 0 ||
-						(adest_x >> 16) >= (m_blitter_regs[A1_CLIP] & 0x7fff) ||
-						(adest_y >> 16) >= ((m_blitter_regs[A1_CLIP] >> 16) & 0x7fff))
+					s32 target_x = COMMAND & 0x00000800 ? asrc_x : adest_x;
+					s32 target_y = COMMAND & 0x00000800 ? asrc_y : adest_y;
+					if (target_x < 0 || target_y < 0 ||
+						(target_x >> 16) >= a1_clipx ||
+						(target_y >> 16) >= a1_clipy)
 						inhibit = 1;
 				}
 
@@ -476,6 +485,7 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 					}
 					else
 					{
+						// (LFUFUNC), default mode
 						if (COMMAND & 0x00200000)
 							writedata |= ~srcdata & ~dstdata;
 						if (COMMAND & 0x00400000)
@@ -544,6 +554,7 @@ void jaguar_state::FUNCNAME(uint32_t command, uint32_t a1flags, uint32_t a2flags
 		}
 
 		/* adjust for phrase mode */
+		// TODO: clearly wrong in places (depends on current pixel mode)
 		if (asrc_phrase_mode)
 		{
 			if (asrc_xadd > 0)

@@ -5083,10 +5083,12 @@ void apple2e_state::prav8c(machine_config &config)
 	config.device_remove("tape");
 
 	PRAV8C_KEYBOARD(config, m_prav8c_kbd);
-	m_prav8c_kbd->b_callback().set(FUNC(apple2e_state::prav8c_kdata_w));
+	m_prav8c_kbd->kbdata_callback().set(FUNC(apple2e_state::prav8c_kdata_w));
 	m_prav8c_kbd->akd_callback().set(FUNC(apple2e_state::ay3600_ako_w));
 	m_prav8c_kbd->strobe_callback().set(FUNC(apple2e_state::prav8c_kstrb_w));
 	m_prav8c_kbd->reset_callback().set(FUNC(apple2e_state::reset_w));
+
+	m_screen->set_screen_update(m_video, NAME((&a2_video_device::screen_update<a2_video_device::model::PRAVETZ_8C, false, false>)));
 }
 
 void apple2e_state::apple2ep(machine_config &config)
