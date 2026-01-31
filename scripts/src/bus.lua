@@ -1152,6 +1152,8 @@ if BUSES["BBC_ROM"] then
 		MAME_DIR .. "src/devices/bus/bbc/rom/nvram.h",
 		MAME_DIR .. "src/devices/bus/bbc/rom/datagem.cpp",
 		MAME_DIR .. "src/devices/bus/bbc/rom/datagem.h",
+		MAME_DIR .. "src/devices/bus/bbc/rom/detalker.cpp",
+		MAME_DIR .. "src/devices/bus/bbc/rom/detalker.h",
 		MAME_DIR .. "src/devices/bus/bbc/rom/dfs.cpp",
 		MAME_DIR .. "src/devices/bus/bbc/rom/dfs.h",
 		MAME_DIR .. "src/devices/bus/bbc/rom/genie.cpp",
@@ -1173,6 +1175,8 @@ if BUSES["BBC_TUBE"] then
 	files {
 		MAME_DIR .. "src/devices/bus/bbc/tube/tube.cpp",
 		MAME_DIR .. "src/devices/bus/bbc/tube/tube.h",
+		MAME_DIR .. "src/devices/bus/bbc/tube/cms6502.cpp",
+		MAME_DIR .. "src/devices/bus/bbc/tube/cms6502.h",
 		MAME_DIR .. "src/devices/bus/bbc/tube/tube_32016.cpp",
 		MAME_DIR .. "src/devices/bus/bbc/tube/tube_32016.h",
 		MAME_DIR .. "src/devices/bus/bbc/tube/tube_6502.cpp",
@@ -1553,6 +1557,8 @@ if BUSES["CBMIEC"] then
 		MAME_DIR .. "src/devices/bus/cbmiec/vic1520.h",
 		MAME_DIR .. "src/devices/bus/cbmiec/c1526.cpp",
 		MAME_DIR .. "src/devices/bus/cbmiec/c1526.h",
+		MAME_DIR .. "src/devices/bus/cbmiec/c5181.cpp",
+		MAME_DIR .. "src/devices/bus/cbmiec/c5181.h",
 	}
 end
 
@@ -4459,6 +4465,23 @@ end
 
 ---------------------------------------------------
 --
+--@src/devices/bus/pencil2/slot.h,BUSES["PENCIL2"] = true
+---------------------------------------------------
+
+if BUSES["PENCIL2"] then
+	files {
+		MAME_DIR .. "src/devices/bus/pencil2/slot.cpp",
+		MAME_DIR .. "src/devices/bus/pencil2/slot.h",
+		MAME_DIR .. "src/devices/bus/pencil2/coleco.cpp",
+		MAME_DIR .. "src/devices/bus/pencil2/coleco.h",
+		MAME_DIR .. "src/devices/bus/pencil2/ram.cpp",
+		MAME_DIR .. "src/devices/bus/pencil2/ram.h",
+	}
+end
+
+
+---------------------------------------------------
+--
 --@src/devices/bus/pet/cass.h,BUSES["PET"] = true
 --@src/devices/bus/pet/exp.h,BUSES["PET"] = true
 --@src/devices/bus/pet/user.h,BUSES["PET"] = true
@@ -6167,6 +6190,14 @@ if BUSES["VME"] then
 		MAME_DIR .. "src/devices/bus/vme/tp881v.h",
 		MAME_DIR .. "src/devices/bus/vme/tsvme104.cpp",
 		MAME_DIR .. "src/devices/bus/vme/tsvme104.h",
+	}
+
+	dependency {
+		{ MAME_DIR .. "src/devices/bus/vme/sys68k_cpu1.cpp", GEN_DIR .. "emu/layout/sys68k_cpu1.lh" },
+	}
+
+	custombuildtask {
+		layoutbuildtask("emu/layout", "sys68k_cpu1"),
 	}
 end
 
