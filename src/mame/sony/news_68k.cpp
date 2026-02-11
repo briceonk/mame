@@ -642,6 +642,7 @@ void news_68k_base_state::parallel_strobe_w(u8 data)
 	LOG("Parallel strobe w 0x%x\n", data);
 	// TODO: NEWS-OS writes 0x5 to this (laptop) - what strobe length does that correspond to?
 	//       For now, this takes the HLE approach.
+	m_parallel->write_strobe(1);
 	m_parallel->write_strobe(0);
 	m_parallel->write_strobe(1);
 }
