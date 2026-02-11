@@ -130,6 +130,7 @@ __|              |         |  |ALS05A| |N82077   |   __             6 x 74F00J->
 
 // busses and connectors
 #include "machine/nscsi_bus.h"
+#include "bus/centronics/ctronics.h"
 #include "bus/nscsi/cd.h"
 #include "bus/nscsi/hd.h"
 #include "bus/rs232/rs232.h"
@@ -161,6 +162,8 @@ public:
 		, m_fdc(*this, "fdc")
 		, m_hid(*this, "hid")
 		, m_serial(*this, "serial%u", 0U)
+		, m_parallel(*this, "parallel")
+		, m_parallel_data(*this, "parallel_data")
 		, m_irq5(*this, "irq5")
 		, m_irq7(*this, "irq7")
 		, m_sw1(*this, "SW1")
@@ -205,6 +208,9 @@ protected:
 	void led_w(u8 data);
 	void poweron_w(u8 data);
 	void ram_enable_w(u8 data);
+	void printer_irq_enable_w(u8 data);
+	void parallel_data_w(u8 data);
+	void parallel_strobe_w(u8 data);
 
 	// devices
 	required_device<m68030_device> m_cpu;
@@ -217,6 +223,8 @@ protected:
 	required_device<news_hid_hle_device> m_hid;
 
 	required_device_array<rs232_port_device, 2> m_serial;
+	required_device<centronics_device> m_parallel;
+	optional_device<output_latch_device> m_parallel_data;
 
 	required_device<input_merger_device> m_irq5;
 	required_device<input_merger_device> m_irq7;
@@ -229,9 +237,12 @@ protected:
 	emu_timer *m_timer;
 
 	// platform hardware state
-	u8 m_intst;
-	bool m_int_state[2];
-	bool m_scc_irq_state;
+	u8 m_intst = 0;
+	bool m_int_state[2] = {false, false};
+	bool m_scc_irq_state = false;
+	bool m_printer_irq_enabled = false;
+	bool m_parallel_busy = false;
+	bool m_parallel_fault = false; // TODO: unify printer/parallel naming
 };
 
 class news_68k_desktop_state : public news_68k_base_state
@@ -273,8 +284,8 @@ protected:
 #endif
 
 	// Desktop-specific platform hardware
-	bool m_parity_irq_state;
-	u8 m_parity_vector;
+	bool m_parity_irq_state = false;
+	u8 m_parity_vector = 0;
 };
 
 class news_68k_laptop_state : public news_68k_base_state
@@ -320,6 +331,7 @@ void news_68k_base_state::machine_start()
 
 	m_scc_irq_state = false;
 	m_intst = 0;
+	m_printer_irq_enabled = false;
 
 	for (bool &int_state : m_int_state)
 		int_state = false;
@@ -329,6 +341,9 @@ void news_68k_base_state::machine_start()
 	save_item(NAME(m_scc_irq_state));
 	save_item(NAME(m_intst));
 	save_item(NAME(m_int_state));
+	save_item(NAME(m_printer_irq_enabled));
+	save_item(NAME(m_parallel_busy));
+	save_item(NAME(m_parallel_fault));
 }
 
 void news_68k_desktop_state::machine_start()
@@ -377,7 +392,11 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 {
 	map(0xe0000000, 0xe000ffff).rom().region("eprom", 0);
 
-	// 0xe0c40000 // centronics
+	map(0xe0c40000, 0xe0c40000).w(FUNC(news_68k_desktop_state::parallel_data_w));
+	map(0xe0c40001, 0xe0c40001).w(FUNC(news_68k_desktop_state::parallel_strobe_w));
+	map(0xe0c40002, 0xe0c40002).lw8([this] (u8) { irq_w<PRINTER>(0); }, "printer_irq_clear");
+	map(0xe0c40003, 0xe0c40003).w(FUNC(news_68k_desktop_state::printer_irq_enable_w));
+
 	map(0xe0c80000, 0xe0c80003).m(m_fdc, FUNC(upd72067_device::map));
 	map(0xe0c80100, 0xe0c80100).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w));
 	map(0xe0cc0000, 0xe0cc0007).m(m_scsi, FUNC(ncr5380_device::map));
@@ -393,7 +412,11 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 	map(0xe0e80000, 0xe0e80017).m(m_dma, FUNC(dmac_0266_device::map));
 	// e0ec0000 // sound board
 	map(0xe0f00000, 0xe0f00003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
-	// e0f40000
+	map(0xe0f40000, 0xe0f40000).lr8([this] {
+		const u8 parallel_status = (m_parallel_busy ? 0x10 : 0x0) | (m_intst & 1 << PRINTER ? 0x8 : 0x0);
+		LOG("Read parallel status = 0x%x\n", parallel_status);
+		return parallel_status;
+	}, "parallel_status_r");
 	//map(0xe0f40000, 0xe0f40000).lr8([]() { return 0xfb; }, "scc_ridsr_r");
 
 	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_desktop_state::timer_w));
@@ -411,6 +434,7 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 	map(0xe1c00200, 0xe1c00200).r(FUNC(news_68k_desktop_state::intst_r));
 	// HACK: disable fdc irq for NetBSD
 	map(0xe1c00200, 0xe1c00200).lw8([this](u8 data) { irq_w<FDC>(0); m_parity_vector = data; }, "parity_vector_w");
+	map(0xe1c00300, 0xe1c00300).lr8([this] { return m_parallel_fault ? 0x40 : 0x0; }, "parallel_fault_r");
 
 	// external I/O
 	map(0xf0000000, 0xffffffff).r(FUNC(news_68k_desktop_state::bus_error_r));
@@ -455,12 +479,22 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 
 	map(0xe1240000, 0xe1240007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_keyboard));
 	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
-	map(0xe12c0000, 0xe12c0003); // TODO: Centronics status/control
+
+	map(0xe12c0000, 0xe12c0000).lr8([this] {
+		const u8 parallel_status = (m_parallel_fault ? 0x4 : 0x0) | (m_parallel_busy ? 0x2 : 0x0) | (m_intst & 1 << PRINTER ? 0x1 : 0x0);
+		LOG("Read parallel status = 0x%x\n", parallel_status);
+		return parallel_status;
+	}, "parallel_status_r");
+	map(0xe12c0001, 0xe12c0001).w(FUNC(news_68k_laptop_state::parallel_strobe_w));
+	map(0xe12c0002, 0xe12c0002).w(FUNC(news_68k_laptop_state::printer_irq_enable_w));
+	map(0xe12c0003, 0xe12c0003).lw8([this] (u8) { irq_w<PRINTER>(0); }, "printer_irq_clear");
+
 	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
 	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
 	map(0xe1580000, 0xe1580007).m(m_fdc, FUNC(n82077aa_device::map));
 	map(0xe15c0000, 0xe15c0000).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w));
-	map(0xe1600000, 0xe1600000); // TODO: Centronics data
+
+	map(0xe1600000, 0xe1600000).w(FUNC(news_68k_laptop_state::parallel_data_w));
 
 	// The 0-3 is important here - the monitor ROM and NEWS-OS use different bytes to read the switch values.
 	map(0xe1680000, 0xe1680003).lr8([this] { return m_sw1->read(); }, "sw1_r");
@@ -527,7 +561,7 @@ void news_68k_base_state::int_check()
 {
 	// TODO: assume 43334443, masking?
 	static int constexpr int_line[] = { INPUT_LINE_IRQ3, INPUT_LINE_IRQ4 };
-	static u8 constexpr int_mask[] = { 0x71, 0x8e };
+	u8 const int_mask[] = { u8(0x31 | (m_printer_irq_enabled ? 0x40 : 0x0)), 0x8e};
 
 	for (unsigned i = 0; i < std::size(m_int_state); i++)
 	{
@@ -589,6 +623,27 @@ void news_68k_base_state::ram_enable_w(u8 data)
 {
 	LOG("(%s) Enabled RAM\n", machine().describe_context());
 	m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer());
+}
+
+void news_68k_base_state::printer_irq_enable_w(u8 data)
+{
+	LOG("(%s) %s printer interrupt", machine().describe_context(), data ? "Enabled" : "Disabled");
+	m_printer_irq_enabled = data;
+}
+
+void news_68k_base_state::parallel_data_w(u8 data)
+{
+	LOG("Parallel data w 0x%x\n", data);
+	m_parallel_data->write(data);
+}
+
+void news_68k_base_state::parallel_strobe_w(u8 data)
+{
+	LOG("Parallel strobe w 0x%x\n", data);
+	// TODO: NEWS-OS writes 0x5 to this (laptop) - what strobe length does that correspond to?
+	//       For now, this takes the HLE approach.
+	m_parallel->write_strobe(0);
+	m_parallel->write_strobe(1);
 }
 
 void news_68k_desktop_state::timer_w(u8 data)
@@ -706,6 +761,30 @@ void news_68k_base_state::common(machine_config &config)
 	NSCSI_CONNECTOR(config, "scsi:4", news_scsi_devices, nullptr);
 	NSCSI_CONNECTOR(config, "scsi:5", news_scsi_devices, nullptr);
 	NSCSI_CONNECTOR(config, "scsi:6", news_scsi_devices, nullptr);
+
+	CENTRONICS(config, m_parallel, centronics_devices, nullptr);
+	// TODO: should IRQ be triggered on each edge?
+	m_parallel->busy_handler().set([this](const int status) {
+		const bool new_status = status;
+		if (m_parallel_busy != new_status)
+		{
+			LOG("Parallel busy changed to %s\n", new_status ? "H" : "L");
+			m_parallel_busy = new_status;
+			irq_w<PRINTER>(1);
+		}
+	});
+	m_parallel->fault_handler().set([this](const int status) {
+		const bool new_status = status;
+		if (m_parallel_fault != new_status)
+		{
+			LOG("Parallel fault changed to %s\n", new_status ? "H" : "L");
+			m_parallel_fault = !new_status;
+			irq_w<PRINTER>(1);
+		}
+	});
+
+	OUTPUT_LATCH(config, m_parallel_data);
+	m_parallel->set_output_latch(*m_parallel_data);
 
 	NEWS_HID_HLE(config, m_hid);
 
