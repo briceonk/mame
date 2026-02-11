@@ -183,7 +183,7 @@ protected:
 
 	// machine config
 	void common(machine_config &config);
-	void config_scc(machine_config &config, const char *default_device_name, int scc_clock);
+	void config_scc(machine_config &config, char const *default_device_name, int scc_clock);
 
 	// IRQ setup
 	enum irq_number : unsigned
@@ -208,7 +208,7 @@ protected:
 	void led_w(u8 data);
 	void poweron_w(u8 data);
 	void ram_enable_w(u8 data);
-	void printer_irq_enable_w(u8 data);
+	void parallel_irq_enable_w(u8 data);
 	void parallel_data_w(u8 data);
 	void parallel_strobe_w(u8 data);
 
@@ -240,9 +240,9 @@ protected:
 	u8 m_intst = 0;
 	bool m_int_state[2] = {false, false};
 	bool m_scc_irq_state = false;
-	bool m_printer_irq_enabled = false;
+	bool m_parallel_irq_enabled = false;
 	bool m_parallel_busy = false;
-	bool m_parallel_fault = false; // TODO: unify printer/parallel naming
+	bool m_parallel_fault = false;
 };
 
 class news_68k_desktop_state : public news_68k_base_state
@@ -331,7 +331,7 @@ void news_68k_base_state::machine_start()
 
 	m_scc_irq_state = false;
 	m_intst = 0;
-	m_printer_irq_enabled = false;
+	m_parallel_irq_enabled = false;
 
 	for (bool &int_state : m_int_state)
 		int_state = false;
@@ -341,7 +341,7 @@ void news_68k_base_state::machine_start()
 	save_item(NAME(m_scc_irq_state));
 	save_item(NAME(m_intst));
 	save_item(NAME(m_int_state));
-	save_item(NAME(m_printer_irq_enabled));
+	save_item(NAME(m_parallel_irq_enabled));
 	save_item(NAME(m_parallel_busy));
 	save_item(NAME(m_parallel_fault));
 }
@@ -394,8 +394,8 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 
 	map(0xe0c40000, 0xe0c40000).w(FUNC(news_68k_desktop_state::parallel_data_w));
 	map(0xe0c40001, 0xe0c40001).w(FUNC(news_68k_desktop_state::parallel_strobe_w));
-	map(0xe0c40002, 0xe0c40002).lw8([this] (u8) { irq_w<PRINTER>(0); }, "printer_irq_clear");
-	map(0xe0c40003, 0xe0c40003).w(FUNC(news_68k_desktop_state::printer_irq_enable_w));
+	map(0xe0c40002, 0xe0c40002).lw8([this] (u8) { irq_w<PRINTER>(0); }, "parallel_irq_clear");
+	map(0xe0c40003, 0xe0c40003).w(FUNC(news_68k_desktop_state::parallel_irq_enable_w));
 
 	map(0xe0c80000, 0xe0c80003).m(m_fdc, FUNC(upd72067_device::map));
 	map(0xe0c80100, 0xe0c80100).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w));
@@ -411,12 +411,12 @@ void news_68k_desktop_state::desktop_cpu_map(address_map &map)
 		[this](offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_net_ram[offset]); }, "net_ram_w");
 	map(0xe0e80000, 0xe0e80017).m(m_dma, FUNC(dmac_0266_device::map));
 	// e0ec0000 // sound board
+
 	map(0xe0f00000, 0xe0f00003).rw(m_net, FUNC(am7990_device::regs_r), FUNC(am7990_device::regs_w));
-	map(0xe0f40000, 0xe0f40000).lr8([this] {
-		const u8 parallel_status = (m_parallel_busy ? 0x10 : 0x0) | (m_intst & 1 << PRINTER ? 0x8 : 0x0);
-		LOG("Read parallel status = 0x%x\n", parallel_status);
-		return parallel_status;
-	}, "parallel_status_r");
+	map(0xe0f40000, 0xe0f40000).lr8(
+		[this] { return (m_parallel_busy ? 0x10 : 0x0) | (m_intst & 1 << PRINTER ? 0x8 : 0x0); },
+		"parallel_status_r");
+
 	//map(0xe0f40000, 0xe0f40000).lr8([]() { return 0xfb; }, "scc_ridsr_r");
 
 	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_desktop_state::timer_w));
@@ -481,13 +481,11 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe1280000, 0xe1280007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_mouse));
 
 	map(0xe12c0000, 0xe12c0000).lr8([this] {
-		const u8 parallel_status = (m_parallel_fault ? 0x4 : 0x0) | (m_parallel_busy ? 0x2 : 0x0) | (m_intst & 1 << PRINTER ? 0x1 : 0x0);
-		LOG("Read parallel status = 0x%x\n", parallel_status);
-		return parallel_status;
-	}, "parallel_status_r");
+			return (m_parallel_fault ? 0x4 : 0x0) | (m_parallel_busy ? 0x2 : 0x0) | (m_intst & 1 << PRINTER ? 0x1 : 0x0);
+		}, "parallel_status_r");
 	map(0xe12c0001, 0xe12c0001).w(FUNC(news_68k_laptop_state::parallel_strobe_w));
-	map(0xe12c0002, 0xe12c0002).w(FUNC(news_68k_laptop_state::printer_irq_enable_w));
-	map(0xe12c0003, 0xe12c0003).lw8([this] (u8) { irq_w<PRINTER>(0); }, "printer_irq_clear");
+	map(0xe12c0002, 0xe12c0002).w(FUNC(news_68k_laptop_state::parallel_irq_enable_w));
+	map(0xe12c0003, 0xe12c0003).lw8([this] (u8) { irq_w<PRINTER>(0); }, "parallel_irq_clear");
 
 	map(0xe1400000, 0xe14000ff).rom().region("idrom", 0);
 	map(0xe1420000, 0xe14207ff).rw(m_rtc, FUNC(m48t02_device::read), FUNC(m48t02_device::write));
@@ -561,7 +559,7 @@ void news_68k_base_state::int_check()
 {
 	// TODO: assume 43334443, masking?
 	static int constexpr int_line[] = { INPUT_LINE_IRQ3, INPUT_LINE_IRQ4 };
-	u8 const int_mask[] = { u8(0x31 | (m_printer_irq_enabled ? 0x40 : 0x0)), 0x8e};
+	u8 const int_mask[] = { u8(0x31 | (m_parallel_irq_enabled ? 0x40 : 0x0)), 0x8e};
 
 	for (unsigned i = 0; i < std::size(m_int_state); i++)
 	{
@@ -625,10 +623,10 @@ void news_68k_base_state::ram_enable_w(u8 data)
 	m_cpu->space(0).install_ram(0, m_ram->mask(), 0xc0000000, m_ram->pointer());
 }
 
-void news_68k_base_state::printer_irq_enable_w(u8 data)
+void news_68k_base_state::parallel_irq_enable_w(u8 data)
 {
-	LOG("(%s) %s printer interrupt", machine().describe_context(), data ? "Enabled" : "Disabled");
-	m_printer_irq_enabled = data;
+	LOG("(%s) %s parallel interrupt", machine().describe_context(), data ? "enabled" : "disabled");
+	m_parallel_irq_enabled = data;
 }
 
 void news_68k_base_state::parallel_data_w(u8 data)
@@ -672,8 +670,8 @@ void news_68k_laptop_state::timer_w(offs_t offset, u8 data)
 			{
 				// TODO: conversion factor calculated assuming NEWS-OS programs timer to get 100Hz as is common on NEWS
 				//       systems - need real HW info
-				constexpr double TIMER_CONVERSION_FACTOR = 0.102459016;
-				const auto rate = attotime::from_hz(m_timer_rate * TIMER_CONVERSION_FACTOR);
+				double constexpr TIMER_CONVERSION_FACTOR = 0.102459016;
+				auto const rate = attotime::from_hz(m_timer_rate * TIMER_CONVERSION_FACTOR);
 				LOGMASKED(LOG_TIMER, "Enabling timer at rate %f Hz\n", rate.as_hz());
 				m_timer->adjust(rate, 0, rate);
 			}
@@ -765,8 +763,8 @@ void news_68k_base_state::common(machine_config &config)
 
 	CENTRONICS(config, m_parallel, centronics_devices, nullptr);
 	// TODO: should IRQ be triggered on each edge?
-	m_parallel->busy_handler().set([this](const int status) {
-		const bool new_status = status;
+	m_parallel->busy_handler().set([this](int const status) {
+		bool const new_status = status;
 		if (m_parallel_busy != new_status)
 		{
 			LOG("Parallel busy changed to %s\n", new_status ? "H" : "L");
@@ -775,7 +773,7 @@ void news_68k_base_state::common(machine_config &config)
 		}
 	});
 	m_parallel->fault_handler().set([this](const int status) {
-		const bool new_status = status;
+		bool const new_status = status;
 		if (m_parallel_fault != new_status)
 		{
 			LOG("Parallel fault changed to %s\n", new_status ? "H" : "L");
@@ -792,7 +790,7 @@ void news_68k_base_state::common(machine_config &config)
 	SOFTWARE_LIST(config, "software_list").set_original("sony_news").set_filter("CISC");
 }
 
-void news_68k_base_state::config_scc(machine_config &config, const char *default_device_name, const int scc_clock)
+void news_68k_base_state::config_scc(machine_config &config, char const *default_device_name, int const scc_clock)
 {
 	SCC85C30(config, m_scc, scc_clock);
 	m_scc->out_int_callback().set(
