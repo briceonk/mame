@@ -602,7 +602,7 @@ int cxd1185_device::state_step()
 		break;
 
 	case XFR_INFO:
-		LOGMASKED(LOG_STATE, "transfer: count %d waiting for REQ\n", (m_command & TRBE) ? m_count : 1);
+		LOGMASKED(LOG_STATE, "transfer: count %d waiting for REQ, ctrl = 0x%x vs 0x%x\n", (m_command & TRBE) ? m_count : 1, scsi_bus->ctrl_r(), S_REQ);
 		if (scsi_bus->ctrl_r() & S_REQ)
 			m_state = scsi_bus->ctrl_r() & S_INP ? XFR_IN : XFR_OUT;
 		break;
@@ -688,6 +688,7 @@ int cxd1185_device::state_step()
 		}
 		else
 		{
+			LOGMASKED(LOG_STATE, "transfer out: waiting for FIFO drain?\n");
 			delay = -1;
 			if (m_command & DMA)
 				set_drq(true);
@@ -716,7 +717,7 @@ int cxd1185_device::state_step()
 		}
 		break;
 	case XFR_OUT_REQ:
-		LOGMASKED(LOG_STATE, "transfer out: count %d waiting for REQ\n", m_count);
+		LOGMASKED(LOG_STATE, "transfer out: count %d waiting for REQ, ctrl = 0x%x vs 0x%x\n", (m_command & TRBE) ? m_count : 1, scsi_bus->ctrl_r(), S_REQ);
 		if (scsi_bus->ctrl_r() & S_REQ)
 		{
 			// check if target changed phase
@@ -904,16 +905,15 @@ void cxd1185_device::dma_w(u8 data)
 
 	m_fifo.enqueue(data);
 
-	// TODO: Disabled this because NEWS-OS 4 sometimes sets count to some huge value and uses the DMAC and the SCSI command to control the bytes transferred.
-	// if (m_fifo.full() || m_fifo.queue_length() >= m_count)
-	// {
+	if (m_fifo.full() || m_fifo.queue_length() >= m_count)
+	{
 		set_drq(false);
 
-		// if (m_count)
-		// {
-		m_state_timer->adjust(attotime::zero);
-		// }
-	// }
+		if (m_count)
+		{
+			m_state_timer->adjust(attotime::zero);
+		}
+	}
 }
 
 void cxd1185_device::port_w(u8 data)

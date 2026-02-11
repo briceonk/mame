@@ -4,8 +4,8 @@
 /*
  * Sony 0266 DMA Controller gate array.
  *
- * This device is a single-channel DMA controller for the CXD1180 SCSI chip
- * (NCR5380 derivative) in Sony NEWS NWS-1[2457]x0 workstations.
+ * This device is a single-channel DMA controller for the SCSI chips (CXD1180/1185)
+ * in Sony NEWS NWS-1[2457]x0 workstations.
  *
  * Sources:
  *  - https://github.com/NetBSD/src/blob/trunk/sys/arch/news68k/dev/dmac_0266.h
@@ -20,7 +20,7 @@
 
 #define LOG_DATA    (1U << 1)
 
-//#define VERBOSE (LOG_GENERAL)
+//#define VERBOSE (LOG_GENERAL|LOG_DATA)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(DMAC_0266, dmac_0266_device, "dmac_0266", "Sony 0266 WSC-ICKDMAC DMA Controller")
@@ -163,6 +163,11 @@ void dmac_0266_device::dma_check(s32 param)
 		else
 		{
 			LOG("Skipping pad byte because interrupt was set\n");
+		}
+
+		if (!(m_status & INTERRUPT)) {
+			// EOP not set, which means we need to keep going
+			m_dma_check->adjust(attotime::zero);
 		}
 
 		return;
