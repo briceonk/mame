@@ -5377,6 +5377,8 @@ if BUSES["SPECTRUM"] then
 		MAME_DIR .. "src/devices/bus/spectrum/fuller.h",
 		MAME_DIR .. "src/devices/bus/spectrum/kempjoy.cpp",
 		MAME_DIR .. "src/devices/bus/spectrum/kempjoy.h",
+		MAME_DIR .. "src/devices/bus/spectrum/kempmouse.cpp",
+		MAME_DIR .. "src/devices/bus/spectrum/kempmouse.h",
 		MAME_DIR .. "src/devices/bus/spectrum/kempdisc.cpp",
 		MAME_DIR .. "src/devices/bus/spectrum/kempdisc.h",
 		MAME_DIR .. "src/devices/bus/spectrum/logitek.cpp",
@@ -6190,14 +6192,6 @@ if BUSES["VME"] then
 		MAME_DIR .. "src/devices/bus/vme/tp881v.h",
 		MAME_DIR .. "src/devices/bus/vme/tsvme104.cpp",
 		MAME_DIR .. "src/devices/bus/vme/tsvme104.h",
-	}
-
-	dependency {
-		{ MAME_DIR .. "src/devices/bus/vme/sys68k_cpu1.cpp", GEN_DIR .. "emu/layout/sys68k_cpu1.lh" },
-	}
-
-	custombuildtask {
-		layoutbuildtask("emu/layout", "sys68k_cpu1"),
 	}
 end
 

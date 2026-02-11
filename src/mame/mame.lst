@@ -447,6 +447,9 @@ superslv
 @source:adds/adds2020.cpp
 adds2020
 
+@source:adds/multivision.cpp
+multivision
+
 @source:adds/vp60.cpp
 vp60
 
@@ -2476,6 +2479,9 @@ ohmygod
 
 @source:atlus/patapata.cpp
 patapata
+
+@source:atlus/pitchtry.cpp
+pitchtry
 
 @source:atlus/rallypnt.cpp
 rallypnt2
@@ -17782,6 +17788,7 @@ ultrchmph
 blktouch
 cdracula
 drgpunch
+drgpunchbl
 gekisha
 gekishap2
 hanamai
@@ -20524,6 +20531,9 @@ ibm5550
 @source:ibm/ibm6580.cpp
 ibm6580
 
+@source:ibm/ptpc110.cpp
+ptpc110
+
 @source:ibm/rs6000_type7xxx.cpp
 rs6k7009
 
@@ -20543,6 +20553,11 @@ tpad770z
 
 @source:ibm/thinkpad8xx.cpp
 tpad850
+
+@source:ice/calchase.cpp
+calchase
+eggsplc
+hostinv
 
 @source:ice/chexx.cpp
 chexx83
@@ -20585,6 +20600,9 @@ ripribita
 
 @source:ice/schexx4gen.cpp
 schexx
+
+@source:ice/skimaxx.cpp
+skimaxx
 
 @source:ice/vp101.cpp
 jnero
@@ -20831,6 +20849,7 @@ lucky8s
 lucky8t
 lucky8u
 lucky8v
+lucky8w
 lucky8tet
 luckybar
 luckylad
@@ -21050,6 +21069,7 @@ cjddz215cn
 cjddz217cn
 cjddzlf
 cjddzp
+cjddzp206cn
 cjddzps
 cjddzs
 cjddzsa
@@ -29109,6 +29129,7 @@ sprtdart
 4enrayaa
 bowlgum
 chicgum
+spadarts
 strker
 tourpgum
 unkpacg
@@ -33227,9 +33248,6 @@ slvrballbu409b
 popshot
 skeetsht
 
-@source:misc/skimaxx.cpp
-skimaxx
-
 @source:misc/skyarmy.cpp
 skyarmy
 
@@ -34658,6 +34676,9 @@ timecrs2v1b
 timecrs2v2b
 timecrs2v4a
 timecrs2v5a
+
+@source:namco/namcos6.cpp
+ddflower
 
 @source:namco/namcos86.cpp
 genpeitd
@@ -36270,6 +36291,7 @@ excitebko
 excitebkj
 goonies
 hogalley
+hogalleyi
 iceclimb
 iceclimba
 iceclmrd
@@ -36846,6 +36868,7 @@ alibaba
 alibabab
 baracuda
 beastfp
+beastfpa
 bigbucks
 birdiy
 bucaner
@@ -37296,7 +37319,6 @@ pccm317
 pccm321
 pccm326
 pccm396f
-pccm912
 pccm915i
 pccm919
 pcd2
@@ -37334,7 +37356,6 @@ qi900
 samdm286
 sarcpc
 scamp386sx
-scsxaio
 sh386sx20
 sis85c471
 sisrabb
@@ -37376,7 +37397,6 @@ um486v
 um82c481af
 um82c491f
 um82c493f
-um8498f
 um8810paio
 um8886
 uni386w
@@ -37405,11 +37425,6 @@ at586x3
 m55hipl
 ficvt503
 ecssi5pi
-
-@source:pc/calchase.cpp
-calchase
-eggsplc
-hostinv
 
 @source:pc/champ2.cpp
 champ2
@@ -37478,6 +37493,9 @@ iskr1031
 @source:pc/mc1502.cpp
 mc1502
 pk88
+
+@source:pc/mdartstr.cpp
+mdartstr
 
 @source:pc/megapc.cpp
 megapc
@@ -37625,6 +37643,10 @@ quake
 
 @source:pc/queen.cpp
 queen
+
+@source:pc/scatsx.cpp
+mb1320
+scsxaio
 
 @source:pc/seawolfnm.cpp
 seawolfnm
@@ -39959,9 +39981,11 @@ drtomy
 @source:playmark/playmark.cpp
 bigtwin
 bigtwinb
+bigtwinc
 excelsr
 excelsra
 hotmind
+hotmindc
 hrdtimes
 hrdtimesa
 luckboomh
@@ -40761,6 +40785,7 @@ dcdev
 dceu
 dcjp
 dcfish
+dcproto
 dctream
 
 @source:sega/deniam.cpp
@@ -43902,6 +43927,7 @@ fc100
 
 @source:skeleton/fdek_h8s.cpp
 battkids
+sirekids
 
 @source:skeleton/fk1.cpp
 fk1
@@ -44045,6 +44071,7 @@ kron180
 
 @source:skeleton/lanmao.cpp
 lanmao
+panda2
 
 @source:skeleton/leadsinger2.cpp
 leadsng2
@@ -46256,6 +46283,7 @@ warriorb
 @source:taito/wgp.cpp
 wgp
 wgp2
+wgp2j
 wgpj
 wgpjoy
 wgpjoya
@@ -48098,6 +48126,11 @@ metamaq2
 @source:ultratec/minicom.cpp
 mcom4_02
 minicom
+
+@source:umc/pc486vl.cpp
+pccm912
+sy019s
+tku5s
 
 @source:umc/supracan.cpp
 supracan

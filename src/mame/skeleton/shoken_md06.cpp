@@ -100,8 +100,8 @@ void shoken_md06_state::sound_io_map(address_map &map)
 	map.global_mask(0xff);
 	map.unmap_value_high();
 
-	map(0x40, 0x40).rw("oki", FUNC(okim9810_device::read), FUNC(okim9810_device::write)); // w?
-	map(0x41, 0x41).w("oki", FUNC(okim9810_device::write_tmp_register)); // ?
+	// map(0xXX, 0xXX).rw("oki", FUNC(okim9810_device::read), FUNC(okim9810_device::write)); // w?
+	// map(0xXX, 0xXX).w("oki", FUNC(okim9810_device::write_tmp_register)); // ?
 	// map(0x40, 0x40).nopw(); // rw?
 	// map(0x41, 0x41).nopw(); // w?
 	map(0x50, 0x5f).rw("rtc", FUNC(rtc62423_device::read), FUNC(rtc62423_device::write));
@@ -242,7 +242,7 @@ ROM_END
 
 // the following sets run on the 'MB-01 MAIN-B' PCB
 // they all share the same Oki samples ROM
-// polstrfi and polstrmf have almost identical program ROMs. Probably just cab re-skins.
+// polstrfi and polstrmf have almost identical program ROMs. Probably just customisations for bigger operators
 ROM_START( polstrfi )
 	ROM_REGION( 0x20000, "maincpu", 0 )
 	ROM_LOAD( "polarstar_fantasy_island_ver_3,2b.ic8", 0x00000, 0x20000, CRC(b63190d8) SHA1(370452857138c3afff5ee7f71fbbf2add27a2208) ) // 1xxxxxxxxxxxxxxxx = 0xFF
@@ -269,8 +269,8 @@ ROM_END
 
 // the following runs on the 'ML01MAIN-1' PCB. It's probably missing at least a video PCB, given reference video: https://www.youtube.com/watch?v=eTAPPweARss
 ROM_START( silvrush )
-	ROM_REGION( 0x10000, "maincpu", 0 )
-	ROM_LOAD( "silver_rush_jp_limit_ver23.08.25.ic6", 0x00000, 0x10000, CRC(ac9e0c52) SHA1(c240a25ddf31913ac82ad7c96cea017890db7b8c) ) // 1xxxxxxxxxxxxxxx = 0xFF
+	ROM_REGION( 0x20000, "maincpu", 0 )
+	ROM_LOAD( "silver_rush_jp_limit_ver23.08.25.ic6", 0x00000, 0x20000, CRC(ac9e0c52) SHA1(c240a25ddf31913ac82ad7c96cea017890db7b8c) ) // 1xxxxxxxxxxxxxxx = 0xFF
 
 	ROM_REGION( 0x200000, "oki", 0 )
 	ROM_LOAD( "type_sr_51f5_ver_1_0.ic55", 0x000000, 0x200000, CRC(d4f1ee94) SHA1(707e3337a18b043b742b64b6561a292f7fa81646) ) // 11xxxxxxxxxxxxxxxxxxx = 0x00
@@ -279,8 +279,8 @@ ROM_END
 } // anonymous namespace
 
 
-GAME( 2001, petitlot,   0, petitlot,  petitlot,  shoken_md06_state, empty_init, ROT0, "Shoken", "Petit Lot (ver. 4.1)",                    MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
-GAME( 200?, polstrfi,   0, polarstar, polarstar, shoken_md06_state, empty_init, ROT0, "Shoken", "Polar Star (ver 3,2B, Fantasy Island)",   MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
-GAME( 200?, polstrmf,   0, polarstar, polarstar, shoken_md06_state, empty_init, ROT0, "Shoken", "Polar Star (Ver 3,2B, MooRrry Island)",   MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
-GAME( 2004, polstar2,   0, polarstar, polarstar, shoken_md06_state, empty_init, ROT0, "Shoken", "Polar Star 2 (ver. 4.5)",                 MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
-GAME( 2011, silvrush,   0, polarstar, polarstar, shoken_md06_state, empty_init, ROT0, "Shoken", "Silver Rush (ver. 23.08.25)",             MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
+GAME( 2001, petitlot,   0,        petitlot,  petitlot,  shoken_md06_state, empty_init, ROT0, "Shoken", "Petit Lot (ver. 4.1)",                    MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
+GAME( 200?, polstrfi,   0,        polarstar, polarstar, shoken_md06_state, empty_init, ROT0, "Shoken", "Polar Star (Ver 3,2B, Fantasy Island)",   MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
+GAME( 200?, polstrmf,   polstrfi, polarstar, polarstar, shoken_md06_state, empty_init, ROT0, "Shoken", "Polar Star (Ver 3,2B, MooRry Fantasy)",   MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
+GAME( 2004, polstar2,   0,        polarstar, polarstar, shoken_md06_state, empty_init, ROT0, "Shoken", "Polar Star 2 (ver. 4.5)",                 MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
+GAME( 2011, silvrush,   0,        polarstar, polarstar, shoken_md06_state, empty_init, ROT0, "Shoken", "Silver Rush (ver. 23.08.25)",             MACHINE_NO_SOUND | MACHINE_NOT_WORKING | MACHINE_MECHANICAL )
