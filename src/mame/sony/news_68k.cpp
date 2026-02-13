@@ -762,7 +762,6 @@ void news_68k_base_state::common(machine_config &config)
 	NSCSI_CONNECTOR(config, "scsi:6", news_scsi_devices, nullptr);
 
 	CENTRONICS(config, m_parallel, centronics_devices, nullptr);
-	// TODO: should IRQ be triggered on each edge?
 	m_parallel->busy_handler().set([this](int const status) {
 		bool const new_status = status;
 		if (m_parallel_busy != new_status)
@@ -899,9 +898,8 @@ void news_68k_laptop_state::nws1250(machine_config &config)
 	FLOPPY_CONNECTOR(config, "fdc:0", "35hd", FLOPPY_35_HD, true, floppy_image_device::default_pc_floppy_formats).enable_sound(false);
 
 	// scsi host adapter
-	// TODO: 32/2 is most likely - 16 is the upper limit of the CXD1185's input range and there is a 32MHz XTAL nearby
 	NSCSI_CONNECTOR(config, "scsi:7").option_set("cxd1185", CXD1185)
-		.clock(32_MHz_XTAL / 2)
+		.clock(32_MHz_XTAL / 2) // TODO: needs confirmation on hw
 		.machine_config(
 			[this](device_t *device)
 			{
