@@ -15,7 +15,7 @@
 #include <cassert>
 #include <cstring>
 
-// #define VERBOSE         LOG_GENERAL
+#define VERBOSE         LOG_GENERAL
 // #define LOG_OUTPUT_FUNC osd_printf_info
 #include "logmacro.h"
 
@@ -42,6 +42,7 @@ void clear_response(uint8_t (&buf)[N], T len)
 
 
 DEFINE_DEVICE_TYPE(NSCSI_TAPE, nscsi_tape_device, "scsi_tape", "SCSI tape");
+DEFINE_DEVICE_TYPE(NSCSI_TAPE_NEWS, nscsi_tape_news_device, "scsi_tape_news", "SCSI tape NEWS");
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -61,6 +62,13 @@ nscsi_tape_device::nscsi_tape_device(const machine_config &config, device_type t
 
 nscsi_tape_device::nscsi_tape_device(const machine_config &config, const char *tag, device_t *owner, u32 clock)
 	: nscsi_tape_device(config, NSCSI_TAPE, tag, owner, clock)
+{
+}
+
+// NEWS-OS 4 will recognize a few models out of the box. For streaming tape, the Anritsu DMT780 can recognize QIC-24,
+// QIC-120, QIC-150, and QIC-525, making it a flexible choice. Different versions of NEWS-OS may need a different drive.
+nscsi_tape_news_device::nscsi_tape_news_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
+	nscsi_tape_device(mconfig, NSCSI_TAPE_NEWS, tag, owner, clock, "ANRITSU", "DMT780", "0000")
 {
 }
 
@@ -250,9 +258,9 @@ void nscsi_tape_device::handle_inquiry(const u8 lun) // mandatory; SCSI-2 sectio
 	scsi_cmdbuf[2] = 0x02; // we're compliant with SCSI-2 only
 	scsi_cmdbuf[3] = 0x02; // we use SCSI-2 response format
 	scsi_cmdbuf[4] = 32; // additional length
-	strncpy((char *)&scsi_cmdbuf[8], "MAME", 8); // vendor
-	strncpy((char *)&scsi_cmdbuf[16], "SCSI tape drive", 16); // product
-	strncpy((char *)&scsi_cmdbuf[32], "1.0", 4); // revision
+	strncpy((char *)&scsi_cmdbuf[8], manufacturer, 8);
+	strncpy((char *)&scsi_cmdbuf[16], product, 16);
+	strncpy((char *)&scsi_cmdbuf[32], revision, 4);
 	for (u32 i = 8; i < 36; i++) {
 		if (scsi_cmdbuf[i] == 0)
 			scsi_cmdbuf[i] = ' '; // pad strings with spaces

@@ -10,6 +10,7 @@
 #include "machine/nscsi_bus.h"
 
 DECLARE_DEVICE_TYPE(NSCSI_TAPE, nscsi_tape_device);
+DECLARE_DEVICE_TYPE(NSCSI_TAPE_NEWS, nscsi_tape_news_device)
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -21,6 +22,13 @@ public:
 
 protected:
 	nscsi_tape_device(const machine_config &config, device_type type, const char *tag, device_t *owner, u32 clock);
+	nscsi_tape_device(const machine_config &config, device_type type, const char *tag, device_t *owner, u32 clock, const char *manufacturer, const char *product, const char *revision)
+		: nscsi_tape_device(config, type, tag, owner, clock)
+	{
+		strncpy(this->manufacturer, manufacturer, 8);
+		strncpy(this->product, product, 16);
+		strncpy(this->revision, revision, 4);
+	}
 
 	// device_t implementation
 	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
@@ -62,6 +70,11 @@ protected:
 	bool m_tape_changed; // should we report medium changed next time we receive command
 	u32 m_fixed_block_len; // fixed-length block length
 
+	// INQUIRY data
+	char manufacturer[8]; // drive manufacturer
+	char product[16]; // product code
+	char revision[4]; // product/firmware revision
+
 	// state for READ and WRITE
 	u32 m_rw_buf_size; // size of read/write buffer
 	std::unique_ptr<u8[]> m_rw_buf; // read/write buffer
@@ -76,6 +89,12 @@ protected:
 	// state for MODE SELECT
 	u8 m_pl_buf[256]; // parameter list buffer
 	u32 m_pl_len; // length of valid data in parameter list buffer
+};
+
+class nscsi_tape_news_device : public nscsi_tape_device
+{
+public:
+	nscsi_tape_news_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 };
 
 //////////////////////////////////////////////////////////////////////////////

@@ -142,6 +142,7 @@ __|              |         |  |ALS05A| |N82077   |   __             6 x 74F00J->
 #define LOG_TIMER (1U << 2)
 #define VERBOSE (LOG_GENERAL|LOG_TIMER)
 #include "logmacro.h"
+#include "bus/nscsi/tape.h"
 
 #define DESKTOP_GRAPHICS 0
 
@@ -470,11 +471,11 @@ void news_68k_laptop_state::laptop_cpu_map(address_map &map)
 	map(0xe0000000, 0xe001ffff).rom().region("eprom", 0);
 
 	map(0xe1000000, 0xe1000000).w(FUNC(news_68k_laptop_state::poweron_w));
-	map(0xe1040000, 0xe1040000).w(FUNC(news_68k_laptop_state::ram_enable_w)); // TODO: this was an educated guess
+	map(0xe1040000, 0xe1040000).w(FUNC(news_68k_laptop_state::ram_enable_w)); // This is an educated guess
 	map(0xe10c0000, 0xe10c0000).w(FUNC(news_68k_laptop_state::irq2_w));
 	map(0xe1100000, 0xe1100000).w(FUNC(news_68k_laptop_state::ast_w));
 	map(0xe1140000, 0xe1140003).w(FUNC(news_68k_laptop_state::timer_w));
-	map(0xe11c0000, 0xe11c000f).nopw(); // TODO: ABORTCTL
+	map(0xe11c0000, 0xe11c000f).nopw(); // ABORTCTL
 	map(0xe1200000, 0xe1200000).r(FUNC(news_68k_laptop_state::intst_r));
 
 	map(0xe1240000, 0xe1240007).m(m_hid, FUNC(news_hid_hle_device::map_nws12xx_keyboard));
@@ -725,6 +726,10 @@ static void news_scsi_devices(device_slot_interface &device)
 {
 	device.option_add("harddisk", NSCSI_HARDDISK);
 	device.option_add("cdrom", NSCSI_CDROM);
+
+	// This uses an Anritsu DMT780 tape drive to cover a variety of QIC formats.
+	// Other formats may need different drives. Sony supported and sold several models of external tape drives.
+	device.option_add("tape", NSCSI_TAPE_NEWS);
 }
 
 void news_68k_base_state::common(machine_config &config)
