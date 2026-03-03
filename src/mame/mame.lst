@@ -15196,10 +15196,11 @@ sc6dndema
 sc6dndemb
 sc6dndemc
 
-@source:bfm/bfm_swp.cpp
+@source:bfm/bfm_cobra3.cpp
 c3_ppays
 c3_rtime
 c3_telly
+c3_tellyns
 c3_totp
 
 @source:bfm/bfmsys83.cpp
@@ -15785,6 +15786,7 @@ dimahoou
 dimahoud
 dstlk
 dstlka
+dstlkb
 dstlkh
 dstlku
 dstlku1d
@@ -16120,6 +16122,7 @@ wofr1bl
 diamrun
 gng
 gnga
+gngb
 gngbl
 gngbla
 gngblita
@@ -16637,6 +16640,7 @@ quarterbc
 redlin2p
 strkzone
 teamqb
+teamqb1
 teamqb2
 upyoural
 viper
@@ -17270,6 +17274,7 @@ dreambal
 
 @source:dataeast/exprraid.cpp
 exprraid
+exprraidbl
 exprraidi
 exprraidu
 wexpress
@@ -24593,6 +24598,7 @@ yutnori
 cyvern
 cyvernj
 galpani4
+galpani4a
 galpani4j
 galpani4k
 galpanidx
@@ -24674,18 +24680,6 @@ kaypronew2
 omni2
 omni4
 robie
-
-@source:kiwako/jongkyo.cpp
-jongkyo
-
-@source:kiwako/koikoi.cpp
-koikoi
-koikoip2
-
-@source:kiwako/mrjong.cpp
-blkbustr
-crazyblk
-mrjong
 
 @source:koei/pasogo.cpp
 pasogo
@@ -24888,6 +24882,7 @@ giclassvr
 @source:konami/gijoe.cpp
 gijoe
 gijoea
+gijoeaa
 gijoeea
 gijoej
 gijoeu
@@ -28244,6 +28239,7 @@ pitbossma
 pitbossmb
 pitbosss
 pitbosssa
+pitbosssac
 pitbosssb
 pitbosssc
 pitbosssm
@@ -30208,7 +30204,7 @@ tripjack
 tripjack07
 tripjack11
 
-@source:misc/chameleonrx1.cpp
+@source:misc/chamrx1.cpp
 chamrx1
 
 @source:misc/chance32.cpp
@@ -32038,6 +32034,7 @@ magtouch
 
 @source:misc/majorpkr.cpp
 majorpkr
+majorpkr20
 majorpkra
 majorpkrb
 majorpkrc
@@ -33238,7 +33235,7 @@ hiryuken
 shangkid
 
 @source:misc/silverball.cpp
-slvrball806
+slvrball
 slvrball720
 slvrball632
 slvrballbu409
@@ -33288,10 +33285,6 @@ meteors
 spcforc2
 spcforce
 
-@source:misc/sprcros2.cpp
-sprcros2
-sprcros2a
-
 @source:misc/sshanghai.cpp
 ssh2000
 ssh2000a
@@ -33332,6 +33325,7 @@ quaquiz2
 sextriv
 statriv2
 statriv2v
+statriv3
 statriv4
 statriv5se
 statusbj
@@ -35488,6 +35482,7 @@ iemotom
 kaguya
 kaguya2
 kaguya2f
+kaguyaa
 kanatuen
 korinai
 korinaim
@@ -35627,11 +35622,11 @@ sgaltrop
 sgaltropa
 sweetgal
 
-@source:nichibutsu/niyanpai.cpp
+@source:nichibutsu/nyanpai.cpp
 4psimasy
 mhhonban
 musobana
-niyanpai
+nyanpai
 zokumahj
 
 @source:nichibutsu/pastelg.cpp
@@ -35780,9 +35775,10 @@ robotech
 
 @source:nintendo/mario.cpp
 mario
-marioe
 mariof
+mariog
 marioj
+marioja
 masao
 
 @source:nintendo/mmagic.cpp
@@ -37053,6 +37049,9 @@ visor
 @source:palm/palmz22.cpp
 palmz22
 
+@source:pc/agro.cpp
+agro
+
 @source:pc/asst128.cpp
 asst128
 
@@ -37596,6 +37595,7 @@ pciagp
 pcipc
 pcipcs7
 pcipctx
+se440bx2
 
 @source:pc/pcipc_sis.cpp
 atc1425a
@@ -37618,6 +37618,9 @@ so30h
 so4saw2
 zito4dps
 
+@source:pc/pcipc_via.cpp
+ls5amvp3
+
 @source:pc/play4texash.cpp
 play4texash
 
@@ -37636,6 +37639,9 @@ i8550061
 i8555081
 i8580071
 i8580111
+
+@source:pc/pulltrig.cpp
+pulltrig
 
 @source:pc/quakeat.cpp
 ga6la7
@@ -37658,6 +37664,9 @@ gamecst2
 gamecstl
 shutms11
 zidav630e
+
+@source:pc/sshuffle.cpp
+sshuffle
 
 @source:pc/tandy1t.cpp
 t1000
@@ -40608,6 +40617,13 @@ drmicro
 @source:sanritsu/jantotsu.cpp
 jantotsu
 
+@source:sanritsu/jongkyo.cpp
+jongkyo
+
+@source:sanritsu/koikoi.cpp
+koikoi
+koikoip2
+
 @source:sanritsu/mermaid.cpp
 mermaid
 rougien
@@ -40616,8 +40632,17 @@ yachtmn
 @source:sanritsu/mjkjidai.cpp
 mjkjidai
 
+@source:sanritsu/mrjong.cpp
+blkbustr
+crazyblk
+mrjong
+
 @source:sanritsu/ron.cpp
 ron2
+
+@source:sanritsu/sprcros2.cpp
+sprcros2
+sprcros2a
 
 @source:sanyo/mbc55x.cpp
 mbc55x
@@ -42959,6 +42984,7 @@ prophet5rev30
 
 @source:sequential/prophet600.cpp
 prpht600
+prpht600a
 
 @source:sequential/sixtrak.cpp
 sixtrak
@@ -43809,6 +43835,9 @@ azkoyent8
 design6
 designe
 
+@source:skeleton/dharma_z180.cpp
+lbingo
+
 @source:skeleton/diablo1300.cpp
 diablo
 
@@ -44007,8 +44036,8 @@ poemzet2
 i7000
 
 @source:skeleton/iam2.cpp
-zhonggmj
 szjl
+zhonggmj
 
 @source:skeleton/icatel.cpp
 icatel
@@ -44285,9 +44314,6 @@ pt68k4
 @source:skeleton/ptcsol.cpp
 sol20
 
-@source:skeleton/pullttrigger.cpp
-pullttrig
-
 @source:skeleton/pv9234.cpp
 pv9234
 
@@ -44316,6 +44342,9 @@ rvoicepc
 
 @source:skeleton/sacstate.cpp
 sacstate
+
+@source:skeleton/sammy_pachislo_z80.cpp
+ultracl3
 
 @source:skeleton/sansa_fuze.cpp
 sanfuze2
@@ -46618,6 +46647,7 @@ tbowlp
 
 @source:tecmo/tecmo.cpp
 backfirt
+backfirtb
 gemini
 geminib
 geminij
@@ -46975,6 +47005,16 @@ dt7
 @source:toaplan/enmadaio.cpp
 enmadaio
 
+@source:toaplan/fireshrk.cpp
+fireshrk
+fireshrka
+fireshrkd
+fireshrkdh
+samesame
+samesame2
+samesamecn
+samesamenh
+
 @source:toaplan/fixeight.cpp
 fixeight
 fixeighta
@@ -47049,6 +47089,9 @@ bbakraidja
 nprobowl
 probowl2
 
+@source:toaplan/rallybik.cpp
+rallybik
+
 @source:toaplan/slapfght.cpp
 alcon
 getstarb1
@@ -47081,6 +47124,7 @@ snowbro2ny
 
 @source:toaplan/sunwise.cpp
 burgkids
+monkichi
 othldrby
 pwrkick
 pyutakun
@@ -47097,10 +47141,6 @@ demonwld2
 demonwld3
 demonwld4
 demonwld5
-fireshrk
-fireshrka
-fireshrkd
-fireshrkdh
 hellfire
 hellfire1
 hellfire1a
@@ -47111,11 +47151,6 @@ outzoneb
 outzonec
 outzoneh
 outzonecv
-rallybik
-samesame
-samesame2
-samesamecn
-samesamenh
 truxton
 vimana
 vimanaj
@@ -48235,6 +48270,11 @@ mrlo
 mrdofabr
 mrdobl
 yankeedo
+
+@source:universal/pachislo_z80.cpp
+crankyc
+thunderv
+versus
 
 @source:universal/sraider.cpp
 mrsdyna

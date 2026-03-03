@@ -129,7 +129,7 @@ void sis950_lpc_device::device_add_mconfig(machine_config &config)
 	m_pit->set_clk<2>(lpc_pit_clock / 12);
 	m_pit->out_handler<2>().set(FUNC(sis950_lpc_device::pit_out2));
 
-	// TODO: unknown part #
+	// TODO: unknown part # and clock (perhaps too fast?)
 	AM9517A(config, m_dmac_master, lpc_pit_clock / 3);
 	m_dmac_master->out_hreq_callback().set(m_dmac_slave, FUNC(am9517a_device::dreq0_w));
 	m_dmac_master->out_eop_callback().set(FUNC(sis950_lpc_device::at_dma8237_out_eop));
@@ -476,6 +476,7 @@ void sis950_lpc_device::io_map(address_map &map)
 
 	// map(0x00e0, 0x00ef) MCA bus (cfr. Bochs) or PnP
 	map(0x00eb, 0x00eb).lw8(NAME([] (offs_t offset, u8 data) { }));
+	map(0x00ed, 0x00ed).lw8(NAME([] (offs_t offset, u8 data) { }));
 
 	// map(0x00f0, 0x00f0) COPRO error
 	// map(0x0480, 0x048f) DMA high page registers
@@ -549,7 +550,7 @@ void sis950_lpc_device::map_extra(uint64_t memory_window_start, uint64_t memory_
 	if (BIT(m_bios_control, 7))
 	{
 		LOGMAP("- ACPI enable (%02x) %04x-%04x\n", m_bios_control, m_acpi_base, m_acpi_base + 0xff);
-		// shutms11 BIOS POST maps this at $5000
+		// shutms11 BIOS POST maps this at $5000, gamecstl at $8000
 		m_acpi->map_device(memory_window_start, memory_window_end, 0, memory_space, io_window_start, io_window_end, m_acpi_base, io_space);
 		io_space->install_device(m_acpi_base | 0x80, m_acpi_base | 0xff, *m_smbus, &sis950_smbus_device::map);
 	}
@@ -689,7 +690,7 @@ void sis950_lpc_device::nmi_control_w(uint8_t data)
 void sis950_lpc_device::rtc_index_w(uint8_t data)
 {
 	m_rtc_index = data & 0x7f;
-	// bit 7: NMI enable
+	// TODO: bit 7: NMI enable
 }
 
 u8 sis950_lpc_device::rtc_data_r()

@@ -175,18 +175,20 @@ private:
 
 void ptpc110_state::main_map(address_map &map)
 {
-//	map(0x0000'0000, 0x0009'ffff).ram();
+//  map(0x0000'0000, 0x0009'ffff).ram();
 //  map(0x000a'0000, 0x000b'ffff).rw(m_vga, FUNC(f65535_vga_device::mem_r), FUNC(f65535_vga_device::mem_w));
 //  map(0x000c'0000, 0x000f'ffff).rom().region("bios", 0);
-//	map(0x0100'0000, 0x0107'ffff).ram();
+//  map(0x0100'0000, 0x0107'ffff).ram();
 	map(0xfffc'0000, 0xffff'ffff).rom().region("bios", 0);
 }
 
 void ptpc110_state::main_io(address_map &map)
 {
 //  map.unmap_value_high();
-	map(0x0024, 0x0027).nopw(); // noisy on $26
+	map(0x0024, 0x0027).nopw(); // noisy on $24-$25, additional address/data config
+	map(0x004c, 0x004f).nopw(); // timestamp on $4f
 //  map(0x03b0, 0x03df).m(m_vga, FUNC(f65535_vga_device::io_map));
+//  map(0x03e0, 0x03e3) Ricoh RB5C396
 //  map(0x15ec, 0x15ef) PCMCIA?
 //  map(0x35e8, 0x35eb) ^
 }
